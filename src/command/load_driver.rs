@@ -28,7 +28,13 @@ pub fn loadDriver(
 ) {
     // 创建临时目录
     if !TEMP_PATH.exists() {
-        fs::create_dir(&*TEMP_PATH).unwrap();
+        if fs::create_dir(&*TEMP_PATH).is_err() {
+            writeConsole(
+                ConsoleType::Err,
+                &getLocaleText("temp-create-failed", None),
+            );
+            return;
+        };
     }
     let zip = sevenZip::new().unwrap();
     let devcon = Devcon::new().unwrap();

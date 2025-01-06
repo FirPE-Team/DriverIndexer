@@ -3,6 +3,7 @@ Success = 成功
 Warning = 警告
 Err = 错误
 
+temp-create-failed=临时目录创建失败
 temp-remove-failed=临时目录删除失败
 
 # 创建索引

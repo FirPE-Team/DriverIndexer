@@ -3,6 +3,7 @@ Success = Success
 Warning = Warning
 Err = Error{"  "}
 
+temp-create-failed=Temporary directory create failed
 temp-remove-failed=Temporary directory deletion failed
 
 # create-index
