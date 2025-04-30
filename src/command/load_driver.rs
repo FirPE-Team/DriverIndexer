@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::{env, fs, thread};
+use std::cmp::Ordering;
 use crate::i18n::getLocaleText;
 use crate::command::create_index::{InfInfo};
 use crate::utils::console::{writeConsole, ConsoleType};
 use crate::utils::devcon::{Devcon, HwID};
 use crate::utils::sevenZIP::sevenZip;
-use crate::utils::util::{compareVersiopn, getFileList};
+use crate::utils::util::{compareVersion, getFileList};
 use crate::utils::{newdevAPI, setupAPI};
 use crate::TEMP_PATH;
 use fluent_templates::fluent_bundle::FluentValue;
@@ -325,7 +326,7 @@ where
             }
         }
         // 排序：高版本优先级大于低版本
-        macthList.sort_by(|b, a| compareVersiopn(&a.Version, &b.Version));
+        macthList.sort_by(|b, a| compareVersion(&a.Version, &b.Version).unwrap_or(Ordering::Less));
         macthList
     };
 

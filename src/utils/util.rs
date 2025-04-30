@@ -61,7 +61,7 @@ pub fn isArchive(archivePath: &Path) -> bool {
 }
 
 /// 比较版本号大小
-pub fn compareVersiopn(version1: &str, version2: &str) -> Ordering {
+pub fn compareVersion(version1: &str, version2: &str) -> Result<Ordering, Box<dyn Error>> {
     let nums1: Vec<&str> = version1.split('.').collect();
     let nums2: Vec<&str> = version2.split('.').collect();
     let n1 = nums1.len();
@@ -69,26 +69,20 @@ pub fn compareVersiopn(version1: &str, version2: &str) -> Ordering {
 
     // 比较版本
     for i in 0..std::cmp::max(n1, n2) {
-        let i1 = if i < n1 {
-            nums1[i].parse::<i32>().unwrap()
-        } else {
-            0
+        let i1 = match nums1.get(i) {
+            Some(s) => s.parse::<u32>()?,
+            None => 0,
         };
-        let i2 = if i < n2 {
-            nums2[i].parse::<i32>().unwrap()
-        } else {
-            0
+        let i2 = match nums2.get(i) {
+            Some(s) => s.parse::<u32>()?,
+            None => 0,
         };
-        if i1 != i2 {
-            return if i1 > i2 {
-                Ordering::Greater
-            } else {
-                Ordering::Less
-            };
+        match i1.cmp(&i2) {
+            Ordering::Equal => continue,
+            non_eq => return Ok(non_eq),
         }
     }
-    // 版本相等
-    Ordering::Equal
+    Ok(Ordering::Equal)
 }
 
 /// 生成临时文件名
