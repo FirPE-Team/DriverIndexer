@@ -23,6 +23,7 @@ extern crate clap;
 
 use std::{env};
 use std::env::temp_dir;
+use std::fs::create_dir_all;
 use std::path::PathBuf;
 use crate::utils::console::{writeConsole, ConsoleType};
 use crate::i18n::getLocaleText;
@@ -60,6 +61,12 @@ lazy_static! {
 }
 
 fn main() {
+    // 创建临时目录
+    if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err(){
+        writeConsole(ConsoleType::Err, &getLocaleText("temp-create-failed", None));
+        return;
+    }
+
     // 检测到当前程序内嵌驱动包时则自动加载
     if command::create_driver::selfDriver() {
         remove_dir_all(&*TEMP_PATH).ok();

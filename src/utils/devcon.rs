@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use crate::utils::util::{writeEmbedFile, String_utils};
@@ -35,9 +34,6 @@ pub struct Devcon {
 impl Devcon {
     /// 初始化
     pub fn new() -> Result<Devcon, Box<dyn Error>> {
-        if !TEMP_PATH.exists() {
-            fs::create_dir(&*TEMP_PATH)?;
-        }
         let devconPath = TEMP_PATH.join("devcon.exe");
         writeEmbedFile(if OsVersion::current().major == 5 { "devcon-nt5.exe" } else { "devcon.exe" }, &devconPath)?;
         Ok(Devcon { devconPath })

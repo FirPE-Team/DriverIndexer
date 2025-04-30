@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::{env, fs, thread};
+use std::{env, thread};
 use std::cmp::Ordering;
 use crate::i18n::getLocaleText;
 use crate::command::create_index::{InfInfo};
@@ -27,16 +27,6 @@ pub fn loadDriver(
     driveClass: Option<String>,
     extractPath: Option<&str>,
 ) {
-    // 创建临时目录
-    if !TEMP_PATH.exists() {
-        if fs::create_dir(&*TEMP_PATH).is_err() {
-            writeConsole(
-                ConsoleType::Err,
-                &getLocaleText("temp-create-failed", None),
-            );
-            return;
-        };
-    }
     let zip = sevenZip::new().unwrap();
     let devcon = Devcon::new().unwrap();
     let setup = RegKey::predef(HKEY_LOCAL_MACHINE)

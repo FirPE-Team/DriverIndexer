@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use crate::utils::util::writeEmbedFile;
@@ -11,9 +10,6 @@ pub struct sevenZip {
 
 impl sevenZip {
     pub fn new() -> Result<sevenZip, Box<dyn Error>> {
-        if !TEMP_PATH.exists() {
-            fs::create_dir(&*TEMP_PATH)?;
-        }
         let zipProgram = TEMP_PATH.join("7z.exe");
         writeEmbedFile("7z.exe", &zipProgram)?;
         writeEmbedFile("7z.dll", &TEMP_PATH.join("7z.dll"))?;
