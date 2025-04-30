@@ -8,7 +8,7 @@ use std::{fs, thread};
 use crate::i18n::getLocaleText;
 use crate::utils::console::{writeConsole, ConsoleType};
 use crate::utils::sevenZIP::sevenZip;
-use crate::utils::util::{getFileList};
+use crate::utils::util::{extract_vars, getFileList, String_utils};
 use crate::TEMP_PATH;
 use chardet::{charset2encoding, detect};
 use encoding::label::encoding_from_whatwg_label;
@@ -79,9 +79,21 @@ impl InfInfo {
             }
             // 驱动版本、日期
             if let Some(dateAndVersion) = line.strip_prefix("DriverVer=") {
-                let dateAndVersion: Vec<&str> = dateAndVersion.split(',').collect();
-                Date = dateAndVersion.get(0).unwrap_or(&"").to_string();
-                Version = dateAndVersion.get(1).unwrap_or(&"").to_string();
+                // 变量替换处理
+                let dateAndVersion = extract_vars(&*dateAndVersion).iter().fold(
+                    dateAndVersion.to_string(),
+                    |acc, ver| {
+                        infContent.get_string_center(&format!("{ver}="), "\r\n")
+                            .map(|v| acc.replace(&format!("%{ver}%"), v.trim_matches('"')))
+                            .unwrap_or(acc)
+                    }
+                );
+
+                let (date, version) = dateAndVersion.split_once(',')
+                    .map(|(d, v)| (d.trim(), v.trim()))
+                    .unwrap_or((&*dateAndVersion, ""));
+                Date = date.to_string();
+                Version = version.to_string();
             }
             // 驱动平台
             for item in SYSTEMARCH.iter() {

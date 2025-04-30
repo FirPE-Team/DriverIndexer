@@ -105,6 +105,24 @@ pub fn getTmpName(prefix: &str, suffix: &str, rand_len: usize) -> OsString {
     buf
 }
 
+/// 提取指定字符串中全部%%形式的变量名
+pub fn extract_vars(s: &str) -> Vec<String> {
+    s.split('%')
+        .enumerate()
+        .filter_map(|(i, part)| {
+            // 只保留奇数索引部分（两个%之间的内容）
+            if i % 2 == 1 && !part.is_empty() {
+                // 过滤合法字符（字母、数字、下划线）
+                part.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_')
+                    .then(|| part.to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 // 增加字符串自定义方法
 pub trait String_utils {
     fn get_string_left(&self, right: &str) -> Result<String, Box<dyn Error>>;
