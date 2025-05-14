@@ -11,8 +11,6 @@ use crate::utils::util::{compareVersion, getFileList};
 use crate::utils::{newdevAPI, setupAPI};
 use crate::TEMP_PATH;
 use fluent_templates::fluent_bundle::FluentValue;
-use winreg::enums::HKEY_LOCAL_MACHINE;
-use winreg::RegKey;
 
 /// 加载驱动包。支持驱动包路径、驱动路径
 /// # 参数
@@ -29,9 +27,6 @@ pub fn loadDriver(
 ) {
     let zip = sevenZip::new().unwrap();
     let devcon = Devcon::new().unwrap();
-    let setup = RegKey::predef(HKEY_LOCAL_MACHINE)
-        .open_subkey(r"SYSTEM\Setup")
-        .unwrap();
 
     let args: HashMap<String, FluentValue> =
         hash_map!("path".to_string() => driverPackPath.to_str().unwrap().into());
@@ -80,7 +75,7 @@ pub fn loadDriver(
         if driverPackPath.is_file() {
             driversPath = TEMP_PATH.join(driverPackPath.file_stem().unwrap());
             // 解压INF文件
-            if !zip.extractFilesFromPathRecurseSubdirectories(driverPackPath, password, "*.inf", &driversPath).unwrap() {
+            if !zip.extractFilesFromPath(driverPackPath, password, "*.inf", &driversPath).unwrap() {
                 writeConsole(
                     ConsoleType::Err,
                     &getLocaleText("driver-unzip-failed", None),
@@ -108,6 +103,7 @@ pub fn loadDriver(
         // 扫描以发现新的硬件
         // devcon.rescan().unwrap();
         unsafe { setupAPI::rescan(); }
+
         // 获取真实硬件信息
         let mut hwIDList = devcon.getRealIdInfo(None).unwrap();
         if hwIDList.is_empty() {
@@ -119,6 +115,7 @@ pub fn loadDriver(
         if !isAllDevice {
             hwIDList = devcon.getProblemIdInfo(hwIDList).unwrap();
             if hwIDList.is_empty() {
+                // 没有需要安装驱动的设备
                 writeConsole(ConsoleType::Err, &getLocaleText("no-found-driver-currently", None));
                 return;
             }
@@ -144,9 +141,6 @@ pub fn loadDriver(
             writeConsole(ConsoleType::Err, &getLocaleText("no-found-driver-currently", None));
             break;
         }
-
-        // 关闭驱动数字验证
-        setup.set_value("SystemSetupInProgress", &(1_u32)).ok();
 
         // 任务列表
         let mut taskList = Vec::new();
@@ -180,9 +174,6 @@ pub fn loadDriver(
             .into_iter()
             .map(|task| task.join())
             .collect::<Vec<_>>();
-
-        // 恢复驱动数字验证
-        setup.set_value("SystemSetupInProgress", &(0_u32)).ok();
     }
 }
 
@@ -213,14 +204,14 @@ fn loadDriverPackage(
             let arg: HashMap<String, FluentValue> = hash_map!(
                 "class".to_string() => infInfoItem.Class.clone().into(),
                 "deviceName".to_string() => hardware.Name.clone().into(),
-                "deviceID".to_string() => hardware.HardwareIDs.get(0).unwrap_or(&"".to_string()).clone().into(),
+                "deviceID".to_string() => hardware.HardwareIDs.first().unwrap_or(&"".to_string()).clone().into(),
                 "driver".to_string() => infInfoItem.Inf.clone().into(),
                 "version".to_string() => infInfoItem.Version.clone().into(),
             );
 
             // 获取解压路径（相对于解压所有INF文件的路径）
             let extractPath = &infInfoItem.Path;
-            let password = password.as_deref().map(|password| password);
+            let password = password.as_deref();
 
             // 解压匹配的驱动
             if driverPackPath.is_file() && !ZIP.extractFilesFromPath(driverPackPath, password, extractPath.as_str(), driversPath).unwrap() {
@@ -243,8 +234,7 @@ fn loadDriverPackage(
             let result: bool = infInfoItem
                 .DriverList
                 .iter()
-                .map(|hwId| newdevAPI::updateDriverForPlugAndPlayDevices(&driveInfPath, hwId))
-                .any(|x| x);
+                .any(|hwId| newdevAPI::updateDriverForPlugAndPlayDevices(&driveInfPath, hwId));
             // 如果当前驱动加载失败则加载下一驱动
             if !result {
                 if Some(infInfoItem) != infInfo.last() {

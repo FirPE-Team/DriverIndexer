@@ -71,45 +71,14 @@ impl sevenZip {
     }
 
     /// 7-zip 解压文件
-    /// 提取具有完整路径的文件（保留文件路径）
+    /// 提取具有完整路径的文件（递归子目录）
+    /// 可用于解压指定文件（inf）
     /// # 参数
     /// 1. 压缩包路径
     /// 2. 压缩包密码
-    /// 3. 压缩包内文件路径
+    /// 3. 压缩包内文件路径（解压全部文件为*）
     /// 4. 输出路径
     pub fn extractFilesFromPath(
-        &self,
-        zipFile: &Path,
-        password: Option<&str>,
-        extractPath: &str,
-        outPath: &Path,
-    ) -> Result<bool, Box<dyn Error>> {
-        let output = Command::new(&self.zipProgram)
-            .arg("x")
-            .arg(zipFile.to_str().unwrap())
-            .arg(if !extractPath.is_empty() {
-                extractPath
-            } else {
-                "*"
-            })
-            .arg("-y")
-            .arg("-aos")
-            .arg(format!("-p{}", password.unwrap_or("")))
-            .arg(format!("-o{}", outPath.to_str().unwrap()))
-            .output()?;
-        let outContent = String::from_utf8_lossy(&output.stdout);
-        Ok(outContent.contains("Everything is Ok"))
-    }
-
-    /// 7-zip 解压文件
-    /// 提取具有完整路径的文件（递归子目录）
-    /// 用于解压指定文件（inf）
-    /// # 参数
-    /// 1. 压缩包路径
-    /// 2. 压缩包密码
-    /// 3. 解压路径
-    /// 4. 输出路径
-    pub fn extractFilesFromPathRecurseSubdirectories(
         &self,
         zipFile: &Path,
         password: Option<&str>,
@@ -129,7 +98,6 @@ impl sevenZip {
         let content = String::from_utf8_lossy(&output.stdout);
         Ok(!content.contains("No files to process") && !content.contains("Errors") && !content.contains("Can't open as archive"))
     }
-
 
     /// 判断指定文件是否为驱动包（包含驱动INF文件）
     /// 用于判断自身程序是否为驱动包应用程序

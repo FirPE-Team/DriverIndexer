@@ -80,7 +80,7 @@ impl InfInfo {
             // 驱动版本、日期
             if let Some(dateAndVersion) = line.strip_prefix("DriverVer=") {
                 // 变量替换处理
-                let dateAndVersion = extract_vars(&*dateAndVersion).iter().fold(
+                let dateAndVersion = extract_vars(dateAndVersion).iter().fold(
                     dateAndVersion.to_string(),
                     |acc, ver| {
                         infContent.get_string_center(&format!("{ver}="), "\r\n")
@@ -218,7 +218,7 @@ pub fn createIndex(drivePath: &Path, password: Option<&str>, saveIndexPath: &Pat
         // 从文件中创建索引文件
         infParentPath = TEMP_PATH.join(drivePath.file_stem().unwrap());
         // 解压INF文件
-        if !zip.extractFilesFromPathRecurseSubdirectories(drivePath, password, "*.inf", &infParentPath).unwrap() {
+        if !zip.extractFilesFromPath(drivePath, password, "*.inf", &infParentPath).unwrap() {
             writeConsole(
                 ConsoleType::Err,
                 &getLocaleText("driver-unzip-failed", None),
