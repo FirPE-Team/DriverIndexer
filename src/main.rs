@@ -64,7 +64,7 @@ fn main() {
     // 创建临时目录
     if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err(){
         writeConsole(ConsoleType::Err, &getLocaleText("temp-create-failed", None));
-        return;
+        std::process::exit(74);
     }
 
     // 检测到当前程序内嵌驱动包时则自动加载
