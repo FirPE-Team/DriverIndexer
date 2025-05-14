@@ -31,6 +31,12 @@ driver-unzip-success = Driver unzip successfully
 driver-install-failed = Driver installation failed
 driver-install-success = Driver installed successfully
 
+# import-driver
+offline-Arch-Err = get offline System arch failed
+driver-import-success = Driver imported successfully: { $inf }
+driver-import-failed = Driver import failed: { $inf }
+driver-import-summary = Processed { $total } drivers, success { $success }, failure { $fail }
+
 # classify-driver
 Drivers-finishing-complete = Drivers finishing complete
 

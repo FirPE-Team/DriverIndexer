@@ -31,6 +31,12 @@ driver-unzip-success = 驱动程序解压成功
 driver-install-failed = 驱动程序安装失败
 driver-install-success = 驱动程序安装成功
 
+# 导入驱动
+offline-Arch-Err = 获取离线系统架构失败
+driver-import-success = 驱动导入成功: { $inf }
+driver-import-failed = 驱动导入失败: { $inf }
+driver-import-summary = 共处理 { $total } 个驱动，成功 { $success }，失败 { $fail }
+
 # 整理驱动
 Drivers-finishing-complete = 驱动整理成功
 

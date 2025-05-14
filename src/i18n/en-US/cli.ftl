@@ -37,6 +37,10 @@ driver-category = Set the install driver category
 only-unzip = Only unzip the driver without installing
 offline-import = Offline import driver
 
+## import-driver
+import-driver = Import drivers offline
+match-device = Match the native device
+
 ## classify-driver
 classify-driver = sort out the driver
 
@@ -48,4 +52,4 @@ driver-package-program-path = Driver package program path
 path-not-exist = The path does not exist, please make sure the entered directory exists
 dir-not-exist = The directory does not exist, please make sure the entered directory exists
 not-driver-category = The driver category is incorrect, please enter the correct driver category
-not-system-path = The path is not the system root directory, please ensure that the input directory exists in the operating system
+not-system-path = The system disk is invalid, make sure that the drive letter you entered exists in the operating system

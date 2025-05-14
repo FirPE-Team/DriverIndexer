@@ -21,13 +21,13 @@ pub fn isValidDirectory(directory: String) -> Result<(), String> {
     Ok(())
 }
 
-/// 是否为有效的系统路径
+/// 是否为离线系统路径
 pub fn isValidSystemPath(systemPath: String) -> Result<(), String>{
     let path = Path::new(&systemPath);
     if !path.exists() {
         return Err(getLocaleText("path-not-exist", None));
     };
-    if !path.join(r"Windows\System32\cmd.exe").exists() {
+    if !path.join(r"Windows\System32\ntoskrnl.exe").exists() {
         return Err(getLocaleText("not-system-path", None));
     }
     Ok(())

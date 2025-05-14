@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
-use crate::cli::cli::{cli, ALL_DEVICE, DRIVE_CLASS, DRIVE_PATH, INDEX_PATH, EXTRACT_DRIVER, PROGRAM_PATH, PASSWORD};
+use crate::cli::cli::{cli, ALL_DEVICE, DRIVE_CLASS, DRIVE_PATH, INDEX_PATH, EXTRACT_DRIVER, PROGRAM_PATH, PASSWORD, SYSTEM_DRIVE, MATCH_DEVICE};
 use crate::i18n::getLocaleText;
 use crate::command;
 use crate::utils::console::{writeConsole, ConsoleType};
-use crate::utils::util::getFileList;
+use crate::utils::util::{getFileList};
 use crate::LOG_PATH;
 use clap::ArgMatches;
 use fluent_templates::fluent_bundle::FluentValue;
@@ -44,11 +44,6 @@ pub fn matches(matches: ArgMatches<'_>) {
         let drivePath = PathBuf::from(matches.value_of(DRIVE_PATH).unwrap());
         let password = matches.value_of(PASSWORD);
         let extractPath = matches.value_of(EXTRACT_DRIVER);
-
-        // TODO: 离线导入驱动
-        // if matches.is_present(OFFLINE_IMPORT) {
-        // let systemRoot = matches.value_of(OFFLINE_IMPORT).unwrap();
-        // }
 
         // 处理通配符
         let driveName = drivePath.file_name().unwrap().to_str().unwrap();
@@ -112,6 +107,35 @@ pub fn matches(matches: ArgMatches<'_>) {
                 class,
                 extractPath,
             );
+        }
+    }
+
+    // 导入驱动
+    if let Some(matches) = matches.subcommand_matches("import-driver") {
+        let systemDrive = PathBuf::from(matches.value_of(SYSTEM_DRIVE).unwrap());
+        let drivePath = PathBuf::from(matches.value_of(DRIVE_PATH).unwrap());
+        let password = matches.value_of(PASSWORD);
+        
+        // 处理通配符
+        let driveName = drivePath.file_name().unwrap().to_str().unwrap();
+        if driveName.contains('*') || driveName.contains('?') {
+            let driveList = getFileList(&PathBuf::from(&drivePath.parent().unwrap()), driveName).unwrap();
+            if driveList.is_empty() {
+                writeConsole(ConsoleType::Err, "No driver package was found in this directory");
+                return;
+            }
+            for item in driveList {
+                let args: HashMap<String, FluentValue> = hash_map!("path".to_string() => item.to_str().unwrap().into());
+                writeConsole(ConsoleType::Info, &getLocaleText("load-driver-package", Some(&args)));
+
+                command::import_driver::import_driver(&systemDrive, &item, password, matches.is_present(MATCH_DEVICE)).ok();
+            }
+        } else {
+            // 无通配符
+            let args: HashMap<String, FluentValue> = hash_map!("path".to_string() => drivePath.to_str().unwrap().into());
+            writeConsole(ConsoleType::Info, &getLocaleText("load-driver-package", Some(&args)));
+
+            command::import_driver::import_driver(&systemDrive, &drivePath, password, matches.is_present(MATCH_DEVICE)).ok();
         }
     }
 

@@ -1,12 +1,14 @@
 use std::cmp::Ordering;
+use std::env;
 use std::error::Error;
 use std::ffi::OsString;
-use std::fs::{File, OpenOptions};
+use std::fs::{read, File, OpenOptions};
 use std::io::Write;
 use std::iter::repeat_with;
 use std::path::{Path, PathBuf};
 use crate::Asset;
 use glob::MatchOptions;
+use goblin::pe::PE;
 
 /// 写到文件
 pub fn writeEmbedFile(filePath: &str, outFilePath: &Path) -> Result<(), Box<dyn Error>> {
@@ -122,6 +124,40 @@ pub fn extract_vars(s: &str) -> Vec<String> {
         })
         .collect()
 }
+
+/// 是否为离线系统
+pub fn isOfflineSystem(systemPath: &Path) -> Result<bool, Box<dyn Error>> {
+    // 拼接 Windows 子目录
+    let systemPath = PathBuf::from(systemPath).join("Windows");
+
+    // 获取当前系统的 SystemRoot，如 C:\Windows
+    let currentSystem = PathBuf::from(env::var("SystemRoot")?);
+
+    let input_path = systemPath.canonicalize()?;
+    let current_path = currentSystem.canonicalize()?;
+
+    Ok(input_path != current_path)
+}
+
+/// # 获取系统架构
+/// ## 参数
+/// 1.系统目录
+/// ## 返回值
+/// - Ok(u16)：PE 文件 Machine 字段
+///   - 0x014c → x86
+///   - 0x8664 → x64
+///   - 0xAA64 → ARM64
+/// - Err：读取或解析失败
+pub fn getArchCode(systemPath: &Path) -> Result<u16, Box<dyn Error>>  {
+    let krnl_path = systemPath.join("Windows").join("System32").join("ntoskrnl.exe");
+    let bytes = read(&krnl_path)?;
+    let pe = PE::parse(&bytes)?;
+
+    let machine = pe.header.coff_header.machine;
+    Ok(machine)
+}
+
+
 
 // 增加字符串自定义方法
 pub trait String_utils {

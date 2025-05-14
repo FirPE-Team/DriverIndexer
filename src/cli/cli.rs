@@ -1,13 +1,15 @@
 use clap::{crate_version, App, AppSettings, Arg, ArgMatches, SubCommand};
 
-use crate::cli::validator::{isValidDirectory, isValidDriverClass, isValidPath, isValidPathIncludeWildcard};
+use crate::cli::validator::{isValidDirectory, isValidDriverClass, isValidPath, isValidPathIncludeWildcard, isValidSystemPath};
 use crate::i18n::getLocaleText;
 
 pub const HELP: &str = "help";
+pub const SYSTEM_DRIVE: &str = "SystemDrive";
 pub const DRIVE_PATH: &str = "DrivePath";
 pub const INDEX_PATH: &str = "IndexPath";
 pub const DRIVE_CLASS: &str = "DriveClass";
 pub const ALL_DEVICE: &str = "AllDevice";
+pub const MATCH_DEVICE: &str = "MatchDevice";
 pub const PASSWORD: &str = "Password";
 pub const OFFLINE_IMPORT: &str = "OfflineImport";
 pub const EXTRACT_DRIVER: &str = "ExtractDriver";
@@ -122,15 +124,44 @@ pub fn cli<'a>() -> ArgMatches<'a> {
                         .value_name(EXTRACT_DRIVER)
                         .help(&getLocaleText("only-unzip", None)),
                 )
-                // TODO: 选项-离线注入驱动
-                // .arg(
-                //     Arg::with_name(OFFLINE_IMPORT)
-                //         .short("o")
-                //         .long(OFFLINE_IMPORT)
-                //         .value_name(SYSTEM_ROOT)
-                //         .validator(isValidSystemPath)
-                //         .help(&getLocaleText("offline-import", None)),
-                // ),
+        )
+        // 导入驱动
+        .subcommand(
+            SubCommand::with_name("import-driver")
+                .about(&*getLocaleText("import-driver", None))
+                .help_short("H")
+                // 参数-系统盘
+                .arg(
+                    Arg::with_name(SYSTEM_DRIVE)
+                        .value_name(SYSTEM_DRIVE)
+                        .validator(isValidSystemPath)
+                        .required(true)
+                        .index(1),
+                )
+                // 参数-驱动
+                .arg(
+                    Arg::with_name(DRIVE_PATH)
+                        .value_name(DRIVE_PATH)
+                        .validator(isValidPathIncludeWildcard)
+                        .required(true)
+                        .index(2)
+                        .help(&getLocaleText("package-path", None)),
+                )
+                // 选项-指定压缩包密码
+                .arg(
+                    Arg::with_name(PASSWORD)
+                        .short("p")
+                        .long(PASSWORD)
+                        .value_name(PASSWORD)
+                        .help(&getLocaleText("package-password", None)),
+                )
+                // 选项-匹配所有设备（包括已安装驱动设备）
+                .arg(
+                    Arg::with_name(MATCH_DEVICE)
+                        .short("m")
+                        .long(MATCH_DEVICE)
+                        .help(&getLocaleText("match-device", None)),
+                )
         )
         // 整理驱动
         .subcommand(
