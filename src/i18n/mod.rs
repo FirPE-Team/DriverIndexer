@@ -6,12 +6,11 @@ use unic_langid::{langid, LanguageIdentifier};
 
 // 多国语言支持
 const US_ENGLISH: LanguageIdentifier = langid!("en-US");
-const ZH_CHINEXE: LanguageIdentifier = langid!("zh-CN");
+const ZH_CHINESE: LanguageIdentifier = langid!("zh-CN");
 
 static_loader! {
     pub static LOCALES = {
         locales: "./src/i18n",
-        core_locales: "./src/i18n/core.ftl",
         fallback_language: "en-US",
         customise: |bundle| bundle.set_use_isolating(false),
     };
@@ -21,8 +20,9 @@ pub fn getLocaleText(id: &str, args: Option<&HashMap<String, FluentValue>>) -> S
     lazy_static! {
         pub static ref LANG_ID: u16 = unsafe { Windows::Win32::Intl::GetUserDefaultUILanguage() };
     }
+
     let lang = if LANG_ID.eq(&2052) {
-        ZH_CHINEXE
+        ZH_CHINESE
     } else {
         US_ENGLISH
     };
