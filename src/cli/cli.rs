@@ -125,6 +125,36 @@ pub fn cli<'a>() -> ArgMatches<'a> {
                         .help(&getLocaleText("only-unzip", None)),
                 )
         )
+        // 加载离线驱动
+        .subcommand(
+            SubCommand::with_name("load-offline-driver")
+                .about(&*getLocaleText("load-offline-driver", None))
+                .help_short("H")
+                // 选项-系统盘
+                .arg(
+                    Arg::with_name(SYSTEM_DRIVE)
+                        .short("s")
+                        .long(SYSTEM_DRIVE)
+                        .value_name(SYSTEM_DRIVE)
+                        .validator(isValidSystemPath)
+                )
+                // 选项-匹配所有设备（包括已安装驱动设备）
+                .arg(
+                    Arg::with_name(ALL_DEVICE)
+                        .short("a")
+                        .long(ALL_DEVICE)
+                        .help(&getLocaleText("match-all-device", None)),
+                )
+                // 选项-驱动类别
+                .arg(
+                    Arg::with_name(DRIVE_CLASS)
+                        .short("c")
+                        .long(DRIVE_CLASS)
+                        .value_name(DRIVE_CLASS)
+                        .validator(isValidDriverClass)
+                        .help(&getLocaleText("driver-category", None)),
+                )
+        )
         // 导入驱动
         .subcommand(
             SubCommand::with_name("import-driver")

@@ -31,6 +31,10 @@ driver-unzip-success = 驱动程序解压成功
 driver-install-failed = 驱动程序安装失败
 driver-install-success = 驱动程序安装成功
 
+# 加载离线驱动
+load-offline-driver = 加载离线系统驱动: { $path }
+not-found-offline-system = 没有找到离线系统
+
 # 导入驱动
 offline-Arch-Err = 获取离线系统架构失败
 driver-import-success = 驱动导入成功: { $inf }

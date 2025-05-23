@@ -1,16 +1,17 @@
-use std::collections::HashMap;
-use std::env;
-use std::path::PathBuf;
-use crate::cli::cli::{cli, ALL_DEVICE, DRIVE_CLASS, DRIVE_PATH, INDEX_PATH, EXTRACT_DRIVER, PROGRAM_PATH, PASSWORD, SYSTEM_DRIVE, MATCH_DEVICE};
-use crate::i18n::getLocaleText;
+use crate::cli::cli::{cli, ALL_DEVICE, DRIVE_CLASS, DRIVE_PATH, EXTRACT_DRIVER, INDEX_PATH, MATCH_DEVICE, PASSWORD, PROGRAM_PATH, SYSTEM_DRIVE};
 use crate::command;
+use crate::i18n::getLocaleText;
 use crate::utils::console::{writeConsole, ConsoleType};
-use crate::utils::util::{getFileList};
+use crate::utils::util::getFileList;
 use crate::LOG_PATH;
 use clap::ArgMatches;
 use fluent_templates::fluent_bundle::FluentValue;
+use std::collections::HashMap;
+use std::env;
+use std::error::Error;
+use std::path::{Path, PathBuf};
 
-pub fn matches(matches: ArgMatches<'_>) {
+pub fn matches(matches: ArgMatches<'_>) -> Result<(), Box<dyn Error>> {
     if isDebug() {
         let arg: HashMap<String, FluentValue> =
             hash_map!("path".to_string() => LOG_PATH.to_str().unwrap().into());
@@ -36,7 +37,7 @@ pub fn matches(matches: ArgMatches<'_>) {
             driverPath.parent().unwrap().join(indexName)
         };
 
-        command::create_index::createIndex(&driverPath, password, &indexPath);
+        command::create_index::createIndex(&driverPath, password, &indexPath)?;
     }
 
     // 加载驱动
@@ -51,7 +52,7 @@ pub fn matches(matches: ArgMatches<'_>) {
             let driveList = getFileList(&PathBuf::from(&drivePath.parent().unwrap()), driveName).unwrap();
             if driveList.is_empty() {
                 writeConsole(ConsoleType::Err, "No driver package was found in this directory");
-                return;
+                return Err(String::from("No driver package was found in this directory").into());
             }
 
             // 创建索引列表（无索引则使用None）
@@ -83,14 +84,10 @@ pub fn matches(matches: ArgMatches<'_>) {
             for drivePathItem in driveList.iter() {
                 let index = indexIter.next().unwrap().clone();
                 let class = matches.value_of(DRIVE_CLASS).map(|class| class.to_string());
-                command::load_driver::loadDriver(
-                    drivePathItem,
-                    password,
-                    index,
-                    matches.is_present(ALL_DEVICE),
-                    class,
-                    extractPath,
-                );
+
+                let args: HashMap<String, FluentValue> = hash_map!("path".to_string() => drivePathItem.to_str().unwrap().into());
+                writeConsole(ConsoleType::Info, &getLocaleText("load-driver-package", Some(&args)));
+                command::load_driver::loadDriver(drivePathItem, password, index, matches.is_present(ALL_DEVICE), class, extractPath)?;
             }
         } else {
             // 无通配符
@@ -99,15 +96,19 @@ pub fn matches(matches: ArgMatches<'_>) {
                 false => None,
             };
             let class = matches.value_of(DRIVE_CLASS).map(|class| class.to_string());
-            command::load_driver::loadDriver(
-                &drivePath,
-                password,
-                index,
-                matches.is_present(ALL_DEVICE),
-                class,
-                extractPath,
-            );
+
+            let args: HashMap<String, FluentValue> = hash_map!("path".to_string() => drivePath.to_str().unwrap().into());
+            writeConsole(ConsoleType::Info, &getLocaleText("load-driver-package", Some(&args)));
+            command::load_driver::loadDriver(&drivePath, password, index, matches.is_present(ALL_DEVICE), class, extractPath)?;
         }
+    }
+
+    // 加载离线驱动
+    if let Some(matches) = matches.subcommand_matches("load-offline-driver") {
+        let systemDrive = matches.value_of(SYSTEM_DRIVE).map(|systemDrive| Path::new(systemDrive));
+        let class = matches.value_of(DRIVE_CLASS).map(|class| class.to_string());
+
+        command::load_offline_driver::load_offline_driver(systemDrive, matches.is_present(ALL_DEVICE), class)?;
     }
 
     // 导入驱动
@@ -115,27 +116,27 @@ pub fn matches(matches: ArgMatches<'_>) {
         let systemDrive = PathBuf::from(matches.value_of(SYSTEM_DRIVE).unwrap());
         let drivePath = PathBuf::from(matches.value_of(DRIVE_PATH).unwrap());
         let password = matches.value_of(PASSWORD);
-        
+
         // 处理通配符
         let driveName = drivePath.file_name().unwrap().to_str().unwrap();
         if driveName.contains('*') || driveName.contains('?') {
             let driveList = getFileList(&PathBuf::from(&drivePath.parent().unwrap()), driveName).unwrap();
             if driveList.is_empty() {
                 writeConsole(ConsoleType::Err, "No driver package was found in this directory");
-                return;
+                return Err(getLocaleText("No driver package was found in this directory", None).into());
             }
             for item in driveList {
                 let args: HashMap<String, FluentValue> = hash_map!("path".to_string() => item.to_str().unwrap().into());
                 writeConsole(ConsoleType::Info, &getLocaleText("load-driver-package", Some(&args)));
 
-                command::import_driver::import_driver(&systemDrive, &item, password, matches.is_present(MATCH_DEVICE)).ok();
+                command::import_driver::import_driver(&systemDrive, &item, password, matches.is_present(MATCH_DEVICE))?;
             }
         } else {
             // 无通配符
             let args: HashMap<String, FluentValue> = hash_map!("path".to_string() => drivePath.to_str().unwrap().into());
             writeConsole(ConsoleType::Info, &getLocaleText("load-driver-package", Some(&args)));
 
-            command::import_driver::import_driver(&systemDrive, &drivePath, password, matches.is_present(MATCH_DEVICE)).ok();
+            command::import_driver::import_driver(&systemDrive, &drivePath, password, matches.is_present(MATCH_DEVICE))?;
         }
     }
 
@@ -143,11 +144,8 @@ pub fn matches(matches: ArgMatches<'_>) {
     if let Some(matches) = matches.subcommand_matches("classify-driver") {
         let inputPath = PathBuf::from(matches.value_of(DRIVE_PATH).unwrap());
 
-        let _result = command::classify_driver::classify_driver(&inputPath);
-        writeConsole(
-            ConsoleType::Success,
-            &getLocaleText("Drivers-finishing-complete", None),
-        );
+        command::classify_driver::classify_driver(&inputPath)?;
+        writeConsole(ConsoleType::Success, &getLocaleText("Drivers-finishing-complete", None));
     }
 
     // 创建驱动包程序
@@ -155,8 +153,10 @@ pub fn matches(matches: ArgMatches<'_>) {
         let inputPath = PathBuf::from(matches.value_of(DRIVE_PATH).unwrap());
         let outputPath = PathBuf::from(matches.value_of(PROGRAM_PATH).unwrap());
 
-        command::create_driver::createDriver(&inputPath, &outputPath).ok();
+        command::create_driver::createDriver(&inputPath, &outputPath)?;
     }
+
+    Ok(())
 }
 
 /// 是否为调试模式

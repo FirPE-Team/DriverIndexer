@@ -21,8 +21,8 @@ pub fn isValidDirectory(directory: String) -> Result<(), String> {
     Ok(())
 }
 
-/// 是否为离线系统路径
-pub fn isValidSystemPath(systemPath: String) -> Result<(), String>{
+/// 是否为系统路径
+pub fn isValidSystemPath(systemPath: String) -> Result<(), String> {
     let path = Path::new(&systemPath);
     if !path.exists() {
         return Err(getLocaleText("path-not-exist", None));

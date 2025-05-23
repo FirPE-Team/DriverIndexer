@@ -5,6 +5,10 @@
 #![allow(dead_code)]
 
 #[macro_use]
+extern crate clap; // 设置静态变量
+#[macro_use]
+extern crate lazy_static;
+#[macro_use]
 mod macros;
 mod cli;
 mod i18n;
@@ -18,19 +22,16 @@ mod bindings {
 #[cfg(test)]
 mod tests;
 
-#[macro_use]
-extern crate clap;
-
-use std::{env};
-use std::env::temp_dir;
-use std::fs::create_dir_all;
-use std::path::PathBuf;
-use crate::utils::console::{writeConsole, ConsoleType};
 use crate::i18n::getLocaleText;
+use crate::utils::console::{writeConsole, ConsoleType};
 use crate::utils::sevenZIP::sevenZip;
 use crate::utils::util::getTmpName;
 use remove_dir_all::remove_dir_all;
 use rust_embed::Embed;
+use std::env;
+use std::env::temp_dir;
+use std::fs::create_dir_all;
+use std::path::PathBuf;
 
 // 设置静态资源
 
@@ -52,9 +53,6 @@ pub struct Asset;
 #[folder = "./assets-ARM64"]
 pub struct Asset;
 
-// 设置静态变量
-#[macro_use]
-extern crate lazy_static;
 lazy_static! {
     pub static ref TEMP_PATH: PathBuf = temp_dir().join(getTmpName(".tmp", "", 6));
     pub static ref LOG_PATH: PathBuf = env::current_dir().unwrap().join(PathBuf::from(env::current_exe().unwrap().file_stem().unwrap()).with_extension("log"));
@@ -62,7 +60,7 @@ lazy_static! {
 
 fn main() {
     // 创建临时目录
-    if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err(){
+    if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
         writeConsole(ConsoleType::Err, &getLocaleText("temp-create-failed", None));
         std::process::exit(74);
     }
@@ -75,10 +73,13 @@ fn main() {
 
     // 处理CLI
     let matches = cli::cli::cli();
-    cli::matches::matches(matches);
+    let result = cli::matches::matches(matches);
 
     // 清除临时目录
     if TEMP_PATH.exists() && remove_dir_all(&*TEMP_PATH).is_err() {
         writeConsole(ConsoleType::Err, &getLocaleText("temp-remove-failed", None));
     }
+
+    // 退出程序
+    std::process::exit(if result.is_ok() { 0 } else { 1 });
 }

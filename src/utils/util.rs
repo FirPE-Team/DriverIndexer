@@ -1,3 +1,6 @@
+use crate::Asset;
+use glob::MatchOptions;
+use goblin::pe::PE;
 use std::cmp::Ordering;
 use std::env;
 use std::error::Error;
@@ -6,9 +9,6 @@ use std::fs::{read, File, OpenOptions};
 use std::io::Write;
 use std::iter::repeat_with;
 use std::path::{Path, PathBuf};
-use crate::Asset;
-use glob::MatchOptions;
-use goblin::pe::PE;
 
 /// 写到文件
 pub fn writeEmbedFile(filePath: &str, outFilePath: &Path) -> Result<(), Box<dyn Error>> {
@@ -148,7 +148,7 @@ pub fn isOfflineSystem(systemPath: &Path) -> Result<bool, Box<dyn Error>> {
 ///   - 0x8664 → x64
 ///   - 0xAA64 → ARM64
 /// - Err：读取或解析失败
-pub fn getArchCode(systemPath: &Path) -> Result<u16, Box<dyn Error>>  {
+pub fn getArchCode(systemPath: &Path) -> Result<u16, Box<dyn Error>> {
     let krnl_path = systemPath.join("Windows").join("System32").join("ntoskrnl.exe");
     let bytes = read(&krnl_path)?;
     let pe = PE::parse(&bytes)?;
@@ -157,6 +157,24 @@ pub fn getArchCode(systemPath: &Path) -> Result<u16, Box<dyn Error>>  {
     Ok(machine)
 }
 
+/// 查找离线系统盘
+pub fn findOfflineSystemDrive() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    // 获取当前系统盘符
+    let current_system_drive = env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string());
+
+    for letter in b'C'..=b'Z' {
+        let drive = format!("{}:", letter as char);
+        // 跳过当前系统盘
+        if drive.eq_ignore_ascii_case(&current_system_drive) { continue; }
+        let path = Path::new(&drive);
+        if path.exists() && path.join("Windows").join("System32").join("ntoskrnl.exe").exists() {
+            candidates.push(path.to_path_buf());
+        }
+    }
+    candidates
+}
 
 
 // 增加字符串自定义方法

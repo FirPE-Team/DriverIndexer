@@ -31,6 +31,10 @@ driver-unzip-success = Driver unzip successfully
 driver-install-failed = Driver installation failed
 driver-install-success = Driver installed successfully
 
+# load-offline-driver
+load-offline-driver = Load offline system driver: { $path }
+not-found-offline-system = No offline systems found
+
 # import-driver
 offline-Arch-Err = get offline System arch failed
 driver-import-success = Driver imported successfully: { $inf }
