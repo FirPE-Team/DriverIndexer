@@ -1,16 +1,16 @@
-use std::error::Error;
-use std::path::Path;
 use crate::command::create_index::InfInfo;
 use crate::command::load_driver::getMatchInfo;
 use crate::i18n::getLocaleText;
-use crate::TEMP_PATH;
 use crate::utils::console::{writeConsole, ConsoleType};
 use crate::utils::devcon::Devcon;
 use crate::utils::drvstoreAPI::DriverStore;
 use crate::utils::sevenZIP::sevenZip;
-use crate::utils::util::{getFileList, getArchCode, isOfflineSystem};
+use crate::utils::util::{getArchCode, getFileList, isOfflineSystem};
+use crate::TEMP_PATH;
+use std::error::Error;
+use std::path::Path;
 
-pub fn import_driver(systemDrive: &Path, driverPath: &Path, password: Option<&str>, matchDevice: bool,) -> Result<(), Box<dyn Error>> {
+pub fn import_driver(systemDrive: &Path, driverPath: &Path, password: Option<&str>, matchDevice: bool) -> Result<(), Box<dyn Error>> {
     let mut real_driver_path = driverPath.to_path_buf();
     let zip = sevenZip::new()?;
 
@@ -31,10 +31,7 @@ pub fn import_driver(systemDrive: &Path, driverPath: &Path, password: Option<&st
         } else {
             // 解压全部驱动文件
             if !zip.extractFilesFromPath(driverPath, password, "*", &driversPath)? {
-                writeConsole(
-                    ConsoleType::Err,
-                    &getLocaleText("driver-unzip-failed", None),
-                );
+                writeConsole(ConsoleType::Err, &getLocaleText("driver-unzip-failed", None));
                 return Err(String::from(&getLocaleText("driver-unzip-failed", None)).into());
             };
         }
@@ -72,7 +69,7 @@ pub fn import_driver(systemDrive: &Path, driverPath: &Path, password: Option<&st
         infList.clear();
         for (_hardware, infInfo) in matchHardwareAndDriver.iter() {
             // 仅匹配第一个最佳的驱动
-            if let Some(InfInfo) = infInfo.first(){
+            if let Some(InfInfo) = infInfo.first() {
                 if !zip.extractFilesFromPath(driverPath, password, &InfInfo.Path, &real_driver_path)? {
                     writeConsole(ConsoleType::Err, &getLocaleText("driver-unzip-failed", None));
                     continue;
@@ -88,7 +85,7 @@ pub fn import_driver(systemDrive: &Path, driverPath: &Path, password: Option<&st
         Err(_) | _ => {
             writeConsole(ConsoleType::Err, &getLocaleText("offline-Arch-Err", None));
             return Err(getLocaleText("getOfflineArchErr", None).into());
-        },
+        }
     };
     let arch = match archCode {
         // x86
@@ -97,7 +94,7 @@ pub fn import_driver(systemDrive: &Path, driverPath: &Path, password: Option<&st
         0x8664 => 9,
         // ARM64
         0xAA64 => 12,
-        _ => {unreachable!()}
+        _ => { unreachable!() }
     };
 
     let mut success_count = 0;

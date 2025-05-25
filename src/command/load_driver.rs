@@ -1,9 +1,5 @@
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::{env, thread};
-use std::cmp::Ordering;
+use crate::command::create_index::InfInfo;
 use crate::i18n::getLocaleText;
-use crate::command::create_index::{InfInfo};
 use crate::utils::console::{writeConsole, ConsoleType};
 use crate::utils::devcon::{Devcon, HwID};
 use crate::utils::sevenZIP::sevenZip;
@@ -11,12 +7,20 @@ use crate::utils::util::{compareVersion, getFileList};
 use crate::utils::{newdevAPI, setupAPI};
 use crate::TEMP_PATH;
 use fluent_templates::fluent_bundle::FluentValue;
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::error::Error;
+use std::path::{Path, PathBuf};
+use std::{env, thread};
 
 /// 加载驱动包。支持驱动包路径、驱动路径
 /// # 参数
 /// 1. 驱动包路径
-/// 2. 索引Option
-/// 3. 是否为精确匹配
+/// 2. 驱动包密码
+/// 3. 索引Option
+/// 4. 是否为精确匹配
+/// 5. 驱动类别
+/// 6. 释放路径
 pub fn loadDriver(
     driverPackPath: &Path,
     password: Option<&str>,
@@ -24,16 +28,9 @@ pub fn loadDriver(
     isAllDevice: bool,
     driveClass: Option<String>,
     extractPath: Option<&str>,
-) {
-    let zip = sevenZip::new().unwrap();
-    let devcon = Devcon::new().unwrap();
-
-    let args: HashMap<String, FluentValue> =
-        hash_map!("path".to_string() => driverPackPath.to_str().unwrap().into());
-    writeConsole(
-        ConsoleType::Info,
-        &getLocaleText("load-driver-package", Some(&args)),
-    );
+) -> Result<(), Box<dyn Error>> {
+    let zip = sevenZip::new()?;
+    let devcon = Devcon::new()?;
 
     let infInfoList;
 
@@ -43,18 +40,14 @@ pub fn loadDriver(
     if let Some(indexPath) = indexPath {
         // ==========索引法==========
         driversPath = TEMP_PATH.join(driverPackPath.file_stem().unwrap());
-        // let mut indexPath = indexPath.unwrap();
         let indexPath = if indexPath.is_relative() {
             // 判断索引文件是否为相对路径
             let relativeIndexPath = driverPackPath.parent().unwrap().join(&indexPath);
             if relativeIndexPath.exists() { relativeIndexPath } else {
                 // 尝试解压索引文件
                 if !zip.extractFiles(driverPackPath, password, indexPath.to_str().unwrap(), &driversPath).unwrap() {
-                    writeConsole(
-                        ConsoleType::Err,
-                        &getLocaleText("unzip-index-failed", None),
-                    );
-                    return;
+                    writeConsole(ConsoleType::Err, &getLocaleText("unzip-index-failed", None));
+                    return Err(getLocaleText("unzip-index-failed", None).into());
                 };
                 driversPath.join(&indexPath)
             }
@@ -63,11 +56,8 @@ pub fn loadDriver(
         infInfoList = match InfInfo::parsingIndex(&indexPath) {
             Ok(infInfoList) => infInfoList,
             Err(_) => {
-                writeConsole(
-                    ConsoleType::Err,
-                    &getLocaleText("index-parsing-failed", None),
-                );
-                return;
+                writeConsole(ConsoleType::Err, &getLocaleText("index-parsing-failed", None));
+                return Err(getLocaleText("index-parsing-failed", None).into());
             }
         };
     } else {
@@ -76,20 +66,17 @@ pub fn loadDriver(
             driversPath = TEMP_PATH.join(driverPackPath.file_stem().unwrap());
             // 解压INF文件
             if !zip.extractFilesFromPath(driverPackPath, password, "*.inf", &driversPath).unwrap() {
-                writeConsole(
-                    ConsoleType::Err,
-                    &getLocaleText("driver-unzip-failed", None),
-                );
-                return;
+                writeConsole(ConsoleType::Err, &getLocaleText("driver-unzip-failed", None));
+                return Err(getLocaleText("driver-unzip-failed", None).into());
             };
         } else {
             // 驱动包为文件夹
             driversPath = PathBuf::from(driverPackPath);
         }
-        let infList = getFileList(&driversPath, "*.inf").unwrap();
+        let infList = getFileList(&driversPath, "*.inf")?;
         if infList.is_empty() {
             writeConsole(ConsoleType::Err, &getLocaleText("no-driver-package", None));
-            return;
+            return Err(getLocaleText("no-driver-package", None).into());
         }
         // 多线程解析INF文件
         infInfoList = InfInfo::parsingInfFileList(&driversPath, &infList);
@@ -108,7 +95,7 @@ pub fn loadDriver(
         let mut hwIDList = devcon.getRealIdInfo(None).unwrap();
         if hwIDList.is_empty() {
             writeConsole(ConsoleType::Err, &getLocaleText("no-device", None));
-            return;
+            return Err(getLocaleText("no-device", None).into());
         }
 
         // 判断是否需要获取有问题的硬件信息
@@ -117,7 +104,7 @@ pub fn loadDriver(
             if hwIDList.is_empty() {
                 // 没有需要安装驱动的设备
                 writeConsole(ConsoleType::Err, &getLocaleText("no-found-driver-currently", None));
-                return;
+                return Err(getLocaleText("no-found-driver-currently", None).into());
             }
         }
 
@@ -156,7 +143,6 @@ pub fn loadDriver(
                 None => driversPath.clone(),
                 Some(path) => PathBuf::from(path)
             };
-            // let driversPath = driversPath.clone();
             let hardware = hardware.clone();
             let infInfo = infInfo.clone();
 
@@ -175,6 +161,7 @@ pub fn loadDriver(
             .map(|task| task.join())
             .collect::<Vec<_>>();
     }
+    Ok(())
 }
 
 

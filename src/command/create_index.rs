@@ -1,10 +1,3 @@
-use std::collections::HashMap;
-use std::error::Error;
-use std::fs::File;
-use std::io::Read;
-use std::path::{Path, PathBuf};
-use std::sync::mpsc;
-use std::{fs, thread};
 use crate::i18n::getLocaleText;
 use crate::utils::console::{writeConsole, ConsoleType};
 use crate::utils::sevenZIP::sevenZip;
@@ -15,6 +8,13 @@ use encoding::label::encoding_from_whatwg_label;
 use encoding::DecoderTrap;
 use fluent_templates::fluent_bundle::FluentValue;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::error::Error;
+use std::fs::File;
+use std::io::Read;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::{fs, thread};
 
 /// INF驱动信息
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -86,7 +86,7 @@ impl InfInfo {
                         infContent.get_string_center(&format!("{ver}="), "\r\n")
                             .map(|v| acc.replace(&format!("%{ver}%"), v.trim_matches('"')))
                             .unwrap_or(acc)
-                    }
+                    },
                 );
 
                 let (date, version) = dateAndVersion.split_once(',')
@@ -192,10 +192,10 @@ impl InfInfo {
     }
 }
 
-pub fn createIndex(drivePath: &Path, password: Option<&str>, saveIndexPath: &Path) {
+pub fn createIndex(drivePath: &Path, password: Option<&str>, saveIndexPath: &Path) -> Result<(), Box<dyn Error>> {
     writeConsole(ConsoleType::Info, &getLocaleText("processing", None));
 
-    let zip = sevenZip::new().unwrap();
+    let zip = sevenZip::new()?;
 
     // INF文件父路径
     let infParentPath;
@@ -219,11 +219,8 @@ pub fn createIndex(drivePath: &Path, password: Option<&str>, saveIndexPath: &Pat
         infParentPath = TEMP_PATH.join(drivePath.file_stem().unwrap());
         // 解压INF文件
         if !zip.extractFilesFromPath(drivePath, password, "*.inf", &infParentPath).unwrap() {
-            writeConsole(
-                ConsoleType::Err,
-                &getLocaleText("driver-unzip-failed", None),
-            );
-            return;
+            writeConsole(ConsoleType::Err, &getLocaleText("driver-unzip-failed", None));
+            return Err(getLocaleText("driver-unzip-failed", None).into());
         }
 
         infList = getFileList(&infParentPath, "*.inf").unwrap();
@@ -237,7 +234,7 @@ pub fn createIndex(drivePath: &Path, password: Option<&str>, saveIndexPath: &Pat
 
     if infList.is_empty() {
         writeConsole(ConsoleType::Err, &getLocaleText("no-inf-find", None));
-        return;
+        return Err(getLocaleText("no-inf-find", None).into());
     }
 
     let mut infInfoList: Vec<InfInfo> = Vec::new();
@@ -250,26 +247,20 @@ pub fn createIndex(drivePath: &Path, password: Option<&str>, saveIndexPath: &Pat
         if let Ok(currentInfo) = InfInfo::parsingInfFile(&infParentPath, item) {
             if currentInfo.DriverList.is_empty() {
                 blankCount += 1;
-                writeConsole(
-                    ConsoleType::Warning,
-                    &getLocaleText("no-hardware", Some(&arg)),
-                );
+                writeConsole(ConsoleType::Warning, &getLocaleText("no-hardware", Some(&arg)));
                 continue;
             }
             successCount += 1;
             infInfoList.push(currentInfo);
         } else {
             ErrorCount += 1;
-            writeConsole(
-                ConsoleType::Err,
-                &getLocaleText("inf-parsing-err", Some(&arg)),
-            );
+            writeConsole(ConsoleType::Err, &getLocaleText("inf-parsing-err", Some(&arg)));
         }
     }
 
     if let Err(_e) = InfInfo::saveIndexFromJson(&infInfoList, &indexPath) {
         writeConsole(ConsoleType::Err, &getLocaleText("index-save-failed", None));
-        return;
+        return Err(getLocaleText("index-save-failed", None).into());
     }
     let arg: HashMap<String, FluentValue> = hash_map!(
         "total".to_string() => infList.len().into(),
@@ -280,4 +271,5 @@ pub fn createIndex(drivePath: &Path, password: Option<&str>, saveIndexPath: &Pat
     writeConsole(ConsoleType::Info, &getLocaleText("total-info", Some(&arg)));
     let arg: HashMap<String, FluentValue> = hash_map!("path".to_string() => indexPath.to_str().unwrap().into());
     writeConsole(ConsoleType::Success, &getLocaleText("saveInfo", Some(&arg)));
+    Ok(())
 }
