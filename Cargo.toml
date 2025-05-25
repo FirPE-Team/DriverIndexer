@@ -14,7 +14,6 @@ panic = 'abort'
 [build-dependencies]
 embed-resource = "2.4.3"
 thunk-rs = "0.3.2"
-windows = "0.9.1"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
@@ -32,11 +31,18 @@ chrono = "0.4"
 remove_dir_all = "0.8.3"
 unic-langid = "0.9.0"
 fluent-templates = "0.10.1"
-windows = "0.9.1"
 libloading = "0.8.5"
 widestring = "1.0.0-beta.1"
 fastrand = "2.1.1"
 goblin = "0.9.3"
+
+[dependencies.windows]
+version = "0.59.0"
+features = [
+    "Win32_Globalization",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_System_IO",
+]
 
 [dependencies.windows-version]
 version = "0.1"

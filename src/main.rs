@@ -15,10 +15,6 @@ mod i18n;
 mod command;
 mod utils;
 
-mod bindings {
-    ::windows::include_bindings!();
-}
-
 #[cfg(test)]
 mod tests;
 
