@@ -140,6 +140,26 @@ pub fn matches(matches: ArgMatches<'_>) -> Result<(), Box<dyn Error>> {
         }
     }
 
+    // 删除驱动
+    if let Some(matches) = matches.subcommand_matches("remove-driver") {
+        let systemDrive = PathBuf::from(matches.value_of(SYSTEM_DRIVE).unwrap());
+        let driveName = matches.value_of(DRIVE_PATH).unwrap();
+
+        let args: HashMap<String, FluentValue> = hash_map!("inf".to_string() => driveName.into());
+        writeConsole(ConsoleType::Info, &getLocaleText("driver-remove", Some(&args)));
+
+        return match command::remove_driver::remove_driver(&systemDrive, driveName) {
+            Ok(_) => {
+                writeConsole(ConsoleType::Success, &getLocaleText("driver-remove-success", None));
+                Ok(())
+            }
+            Err(e) => {
+                writeConsole(ConsoleType::Err, &format!("{}, {}", getLocaleText("driver-remove-failed", None), e.to_string()));
+                Err(e)
+            }
+        };
+    }
+
     // 整理驱动
     if let Some(matches) = matches.subcommand_matches("classify-driver") {
         let inputPath = PathBuf::from(matches.value_of(DRIVE_PATH).unwrap());

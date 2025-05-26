@@ -41,6 +41,11 @@ driver-import-success = 驱动导入成功: { $inf }
 driver-import-failed = 驱动导入失败: { $inf }
 driver-import-summary = 共处理 { $total } 个驱动，成功 { $success }，失败 { $fail }
 
+## 删除驱动
+driver-remove = 删除驱动: { $inf }
+driver-remove-success = 驱动删除成功
+driver-remove-failed = 驱动删除失败
+
 # 整理驱动
 Drivers-finishing-complete = 驱动整理成功
 

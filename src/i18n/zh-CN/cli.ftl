@@ -38,8 +38,11 @@ only-unzip = 仅解压驱动程序而不安装
 offline-import = 离线导入驱动
 
 ## import-driver
-import-driver = 离线导入驱动
+import-driver = 导入驱动
 match-device = 匹配本机设备
+
+## remove-driver
+remove-driver = 删除驱动
 
 ## classify-driver
 classify-driver = 整理驱动程序。

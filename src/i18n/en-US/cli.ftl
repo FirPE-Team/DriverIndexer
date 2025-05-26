@@ -38,8 +38,11 @@ only-unzip = Only unzip the driver without installing
 offline-import = Offline import driver
 
 ## import-driver
-import-driver = Import drivers offline
+import-driver = Import drivers
 match-device = Match the native device
+
+## remove-driver
+remove-driver = Remove drivers
 
 ## classify-driver
 classify-driver = sort out the driver

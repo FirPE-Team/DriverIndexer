@@ -41,6 +41,10 @@ driver-import-success = Driver imported successfully: { $inf }
 driver-import-failed = Driver import failed: { $inf }
 driver-import-summary = Processed { $total } drivers, success { $success }, failure { $fail }
 
+# remove-driver
+driver-remove-success = Driver remove successfully
+driver-remove-failed = Driver remove successfully
+
 # classify-driver
 Drivers-finishing-complete = Drivers finishing complete
 

@@ -193,6 +193,28 @@ pub fn cli<'a>() -> ArgMatches<'a> {
                         .help(&getLocaleText("match-device", None)),
                 )
         )
+        // 删除驱动
+        .subcommand(
+            SubCommand::with_name("remove-driver")
+                .about(&*getLocaleText("remove-driver", None))
+                .help_short("H")
+                // 参数-系统盘
+                .arg(
+                    Arg::with_name(SYSTEM_DRIVE)
+                        .value_name(SYSTEM_DRIVE)
+                        .validator(isValidSystemPath)
+                        .required(true)
+                        .index(1),
+                )
+                // 参数-驱动
+                .arg(
+                    Arg::with_name(DRIVE_PATH)
+                        .value_name(DRIVE_PATH)
+                        .required(true)
+                        .index(2)
+                        .help(&getLocaleText("package-path", None)),
+                )
+        )
         // 整理驱动
         .subcommand(
             SubCommand::with_name("classify-driver")

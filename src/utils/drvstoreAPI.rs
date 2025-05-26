@@ -2,7 +2,7 @@
 // [drvstore API 参数](https://github.com/WOA-Project/DriverUpdater/blob/0508f7ab731010361931fb9f704fd95caae53924/DriverUpdater/NativeMethods.cs)
 // [drvstore API 示例](https://github.com/WOA-Project/DriverUpdater/blob/2a5b56bd16de18799a54b9d9a56676ac68f259ef/DriverUpdater/Program.cs)
 
-use libloading::{Library};
+use libloading::Library;
 use std::{
     error::Error,
     ffi::OsStr,
@@ -11,15 +11,23 @@ use std::{
 };
 
 type PCWSTR = *const u16;
-type PWSTR  = *mut u16;
+type PWSTR = *mut u16;
 type HANDLE = usize;
 
-/// 返回值类型：与 C# 的 `uint` 对应
-type NTSTATUS = u32;
-const STATUS_SUCCESS: NTSTATUS = 0;
+/// DriverPackageOpenW
+type DSOF_OpenPackageW = unsafe extern "system" fn(
+    PCWSTR,   // infPath
+    u16,      // architecture (如 9 = AMD64)
+    PCWSTR,   // locale (en-US)
+    u32,      // flags
+    usize,    // resolveContext = 0
+) -> HANDLE;
+
+/// DriverPackageClose
+type DSOF_ClosePackageW = unsafe extern "system" fn(HANDLE) -> bool;
 
 /// DriverStoreOpenW
-type DSOF_OpenW = unsafe extern "system" fn(
+type DSOF_OpenStoreW = unsafe extern "system" fn(
     PCWSTR,    // OfflineSystemRoot (如 "C:\\Windows")
     PCWSTR,    // OfflineSystemDrive (如 "C:")
     u32,       // Flags（保留 0）
@@ -34,14 +42,44 @@ type DSOF_ImportW = unsafe extern "system" fn(
     PCWSTR,   // LocaleName
     u32,      // Flags
     PWSTR,    // DestInfPath (out buffer)
-    i32       // DestInfPathSize (just capacity)
-) -> NTSTATUS;
+    i32,      // DestInfPathSize (just capacity)
+) -> u32;
 
 /// DriverStoreReflectW
 type DSOF_ReflectW = unsafe extern "system" fn(HANDLE, u32) -> u32;
 
+/// DriverStoreUnreflectW
+type DSOF_UnreflectW = unsafe extern "system" fn(
+    HANDLE,   // hDriverStore
+    PCWSTR,   // DriverStoreFileName (.inf)
+    u32,      // Flags
+    PCWSTR,   // FilterDeviceIds (可选，通常传 "*" 或 null)
+) -> u32;     // NTSTATUS
+
+/// DriverStoreUnpublishW
+type DSOF_UnpublishW = unsafe extern "system" fn(
+    HANDLE,        // hDriverStore
+    PCWSTR,        // DriverStoreFileName (.inf)
+    u32,           // Flags
+    PWSTR,         // PublishedFileName (out buffer)
+    i32,           // buffer size (count of WCHARs)
+    *mut bool,     // isPublishedFileNameChanged
+) -> u32;          // NTSTATUS
+
+/// DriverStoreUnreflectCriticalW
+type DSOF_UnreflectCriticalW = unsafe extern "system" fn(
+    HANDLE,  // hDriverStore
+    PCWSTR,  // InfName
+    u32,     // Flags
+    PCWSTR,  // FilterDeviceIds (可为 "*" 或 null)
+) -> u32;
+
 /// DriverStoreDeleteW
-type DSOF_DeleteW = unsafe extern "system" fn(PCWSTR, u32) -> u32;
+type DSOF_DeleteW = unsafe extern "system" fn(
+    HANDLE,   // DriverStore handle
+    PCWSTR,   // full INF path (in FileRepository)
+    u32,      // flags
+) -> u32;
 
 /// DriverStoreOfflineAddDriverPackageW
 type DSOF_OfflineAddW = unsafe extern "system" fn(
@@ -54,15 +92,22 @@ type DSOF_OfflineAddW = unsafe extern "system" fn(
     *mut i32,  // cchDestInfPath (in/out)
     PCWSTR,    // TargetSystemRoot
     PCWSTR,    // TargetSystemDrive
-) -> NTSTATUS;
+) -> u32;
 
 /// DriverStoreOfflineDeleteDriverPackageW
-type DSOF_OfflineDeleteW = unsafe extern "system" fn(
-    PCWSTR, u32, u32, PCWSTR, PCWSTR
+type DSOF_OfflineDeleteW = unsafe extern "system" fn(PCWSTR, u32, u32, PCWSTR, PCWSTR) -> u32;
+
+pub type EnumDriverPackageCallback = unsafe extern "system" fn(PCWSTR, usize) -> bool;
+
+/// DriverStoreOfflineEnumDriverPackageW
+type DSOF_OfflineEnumW = unsafe extern "system" fn(
+    callback: EnumDriverPackageCallback,
+    lparam: usize,
+    target_system_root: PCWSTR,
 ) -> u32;
 
 /// DriverStoreClose
-type DSOF_CloseW = unsafe extern "system" fn(HANDLE) -> bool;
+type DSOF_CloseStoreW = unsafe extern "system" fn(HANDLE) -> bool;
 
 /// 将 &OsStr 转成以 NUL 结尾的 UTF-16 Vec<u16>
 fn to_wide(s: &OsStr) -> Vec<u16> {
@@ -70,14 +115,20 @@ fn to_wide(s: &OsStr) -> Vec<u16> {
 }
 
 pub struct DriverStore {
-    _lib:    Library,
-    open:    DSOF_OpenW,
+    _lib: Library,
+    openPackage: DSOF_OpenPackageW,
+    closePackage: DSOF_ClosePackageW,
+    openStore: DSOF_OpenStoreW,
     import: DSOF_ImportW,
     reflect: DSOF_ReflectW,
+    unreflect: DSOF_UnreflectW,
+    unpublish: DSOF_UnpublishW,
+    unreflect_critical: DSOF_UnreflectCriticalW,
     delete: DSOF_DeleteW,
     offline_add: DSOF_OfflineAddW,
     offline_delete: DSOF_OfflineDeleteW,
-    close:   DSOF_CloseW,
+    offline_enum: DSOF_OfflineEnumW,
+    closeStore: DSOF_CloseStoreW,
 }
 
 impl DriverStore {
@@ -85,26 +136,58 @@ impl DriverStore {
     pub unsafe fn new() -> Result<Self, Box<dyn Error>> {
         let lib = Library::new("drvstore.dll")?;
         Ok(Self {
-            open: *lib.get(b"DriverStoreOpenW")?,
+            openPackage: *lib.get(b"DriverPackageOpenW")?,
+            closePackage: *lib.get(b"DriverPackageClose")?,
+            openStore: *lib.get(b"DriverStoreOpenW")?,
             import: *lib.get(b"DriverStoreImportW")?,
             reflect: *lib.get(b"DriverStoreReflectW")?,
+            unreflect: *lib.get(b"DriverStoreUnreflectW")?,
+            unpublish: *lib.get(b"DriverStoreUnpublishW")?,
+            unreflect_critical: *lib.get(b"DriverStoreUnreflectCriticalW")?,
             delete: *lib.get(b"DriverStoreDeleteW")?,
             offline_add: *lib.get(b"DriverStoreOfflineAddDriverPackageW")?,
             offline_delete: *lib.get(b"DriverStoreOfflineDeleteDriverPackageW")?,
-            close: *lib.get(b"DriverStoreClose")?,
-            _lib: lib
+            offline_enum: *lib.get(b"DriverStoreOfflineEnumDriverPackageW")?,
+            closeStore: *lib.get(b"DriverStoreClose")?,
+            _lib: lib,
         })
     }
 
+    /// 打开驱动包（从 OEMINF 文件获取句柄）
+    /// 成功返回句柄（非零），失败返回 Err
+    pub unsafe fn open_driver_package(&self, inf_path: &Path, arch: u16) -> Result<HANDLE, Box<dyn Error>> {
+        let inf_path = to_wide(inf_path.as_os_str());
+        let locale_w = to_wide(OsStr::new("en-US"));
+
+        let handle = (self.openPackage)(
+            inf_path.as_ptr(),
+            arch,
+            locale_w.as_ptr(),
+            0,  // flags
+            0,  // resolveContext
+        );
+
+        if handle != 0 {
+            Ok(handle)
+        } else {
+            Err("DriverPackageOpenW Error".into())
+        }
+    }
+
+    /// 关闭驱动包句柄
+    pub unsafe fn close_package(&self, handle: HANDLE) -> Result<(), Box<dyn Error>> {
+        if !(self.closePackage)(handle) {
+            Err("DriverPackageClose Error".into())
+        } else {
+            Ok(())
+        }
+    }
+
     /// 打开离线仓库，返回句柄
-    pub unsafe fn open_store(
-        &self,
-        system_root: &Path,   // e.g. "D:\\Mount\\Windows"
-        system_drive: &Path,  // e.g. "D:\\Mount"
-    ) -> Result<HANDLE, Box<dyn Error>> {
+    pub unsafe fn open_store(&self, system_root: &Path, system_drive: &Path) -> Result<HANDLE, Box<dyn Error>> {
         let root = to_wide(system_root.as_os_str());
-        let drv  = to_wide(system_drive.as_os_str());
-        let handle = (self.open)(root.as_ptr(), drv.as_ptr(), 0, 0, );
+        let drv = to_wide(system_drive.as_os_str());
+        let handle = (self.openStore)(root.as_ptr(), drv.as_ptr(), 0, 0);
         if handle != 0 {
             Ok(handle)
         } else {
@@ -119,13 +202,7 @@ impl DriverStore {
     /// - locale: 区域（一般 "en-US"）
     /// - flags: 通常为 0
     /// - 返回：导入后的目标路径，如 `%SystemRoot%\System32\DriverStore\FileRepository\xxxx.inf_amd64_...`
-    pub unsafe fn import_driver_to_store(
-        &self,
-        handle: HANDLE,
-        inf_path: &Path,
-        arch: u32,
-        flags: u32,
-    ) -> Result<String, Box<dyn Error>> {
+    pub unsafe fn import_driver_to_store(&self, handle: HANDLE, inf_path: &Path, arch: u32, flags: u32) -> Result<String, Box<dyn Error>> {
         let inf_w = to_wide(inf_path.as_os_str());
         let locale_w = to_wide(OsStr::new("en-US"));
 
@@ -209,20 +286,13 @@ impl DriverStore {
     ///
     /// - 成功返回导入驱动包在仓库中的 INF 路径（`Ok(String)`）
     /// - 失败返回错误信息（`Err`）
-    pub unsafe fn offline_add_driver(
-        &self,
-        inf_path: &Path,
-        system_root: &Path,
-        system_drive: &Path,
-        flags: u32,
-        arch: u32,
-    ) -> Result<String, Box<dyn Error>> {
+    pub unsafe fn offline_add_driver(&self, inf_path: &Path, system_root: &Path, system_drive: &Path, flags: u32, arch: u32) -> Result<String, Box<dyn Error>> {
         let inf_w = to_wide(inf_path.as_os_str());
-        let lang  = to_wide(OsStr::new("en-US"));
+        let lang = to_wide(OsStr::new("en-US"));
         let mut buf = vec![0u16; 260];
         let mut buf_len: i32 = buf.len() as i32;
         let root = to_wide(system_root.as_os_str());
-        let drv  = to_wide(system_drive.as_os_str());
+        let drv = to_wide(system_drive.as_os_str());
 
         let status = (self.offline_add)(
             inf_w.as_ptr(),
@@ -233,9 +303,9 @@ impl DriverStore {
             buf.as_mut_ptr(),
             &mut buf_len as *mut i32,
             root.as_ptr(),
-            drv.as_ptr()
+            drv.as_ptr(),
         );
-        if status != STATUS_SUCCESS {
+        if status != 0 {
             return Err(format!("OfflineAddDriverPackageW Error: 0x{:08X}", status).into());
         }
 
@@ -244,12 +314,13 @@ impl DriverStore {
         Ok(returned)
     }
 
-    /// 删除当前系统中已导入的驱动包（基于 INF 名）
-    /// - `inf_name`: 例如 `"netrtwlanu.inf"`，不带路径
+    /// 删除当前系统中已导入的驱动包
+    /// - `handle`: 驱动库句柄
+    /// - `inf_path`: 在驱动库中的inf文件完整路径
     /// - `flags`: 删除标志（通常为 0）
-    pub unsafe fn delete_driver(&self, inf_name: &str, flags: u32) -> Result<(), Box<dyn Error>> {
-        let name_w = to_wide(OsStr::new(inf_name));
-        let status = (self.delete)(name_w.as_ptr(), flags);
+    pub unsafe fn delete_driver(&self, handle: HANDLE, inf_path: &Path, flags: u32) -> Result<(), Box<dyn Error>> {
+        let inf_w = to_wide(inf_path.as_os_str());
+        let status = (self.delete)(handle, inf_w.as_ptr(), flags);
         if status == 0 {
             Ok(())
         } else {
@@ -257,17 +328,89 @@ impl DriverStore {
         }
     }
 
+    /// 尝试解除一个驱动包（INF）在 DriverStore 中的"反射"状态
+    pub unsafe fn unreflect_driver(&self, handle: HANDLE, inf_name: &str, flags: u32, filter_device_ids: Option<&str>) -> Result<(), Box<dyn Error>> {
+        let inf_w = to_wide(OsStr::new(inf_name));
+        let filter_wide = match filter_device_ids {
+            Some(s) => to_wide(OsStr::new(s)),
+            None => vec![0], // 传 null wide 字符串
+        };
+
+        // 确保 handle 有效
+        if handle == 0 {
+            return Err("Invalid handle".into());
+        }
+
+        // 确保 inf_name 不为空
+        if inf_name.is_empty() {
+            return Err("Invalid INF name".into());
+        }
+
+        let status = (self.unreflect)(
+            handle,
+            inf_w.as_ptr(),
+            flags,
+            if filter_device_ids.is_some() {
+                filter_wide.as_ptr()
+            } else {
+                std::ptr::null()
+            },
+        );
+
+        // 检查返回状态
+        match status {
+            0 => Ok(()),
+            0x000000A1 => Err("Driver is blocked or in use".into()),
+            _ => Err(format!("DriverStoreUnreflectW Error: 0x{:08X}", status).into())
+        }
+    }
+
+    /// 解除系统对驱动的依赖
+    pub unsafe fn unpublish_driver(&self, handle: HANDLE, inf_name: &str, flags: u32) -> Result<String, Box<dyn Error>> {
+        let inf_w = to_wide(OsStr::new(inf_name));
+        let mut buffer: Vec<u16> = vec![0; 260];
+        let mut changed: bool = false;
+
+        let status = (self.unpublish)(handle, inf_w.as_ptr(), flags, buffer.as_mut_ptr(), buffer.len() as i32, &mut changed as *mut bool);
+        if status != 0 {
+            return Err(format!("DriverStoreUnpublishW Error: 0x{:08X}", status).into());
+        }
+
+        let result = String::from_utf16_lossy(&buffer[..buffer.iter().position(|&c| c == 0).unwrap_or(buffer.len())]);
+        Ok(result)
+    }
+
+    /// 解除系统对**关键驱动**的依赖
+    pub unsafe fn unreflect_critical_driver(&self, handle: HANDLE, inf_name: &str, flags: u32, filter_device_ids: Option<&str>) -> Result<(), Box<dyn Error>> {
+        let inf_w = to_wide(OsStr::new(inf_name));
+        let filter_wide = match filter_device_ids {
+            Some(s) => to_wide(OsStr::new(s)),
+            None => vec![0], // 传 null wide 字符串
+        };
+
+        let status = (self.unreflect_critical)(
+            handle,
+            inf_w.as_ptr(),
+            flags,
+            if filter_device_ids.is_some() {
+                filter_wide.as_ptr()
+            } else {
+                std::ptr::null()
+            },
+        );
+
+        if status == 0 {
+            Ok(())
+        } else {
+            Err(format!("DriverStoreUnreflectCriticalW Error: 0x{:08X}", status).into())
+        }
+    }
+
     /// 离线删除驱动包（通过完整 INF 路径）
     /// - `inf_path`: 离线系统中的 `.inf` 路径（如 `C:\\Drivers\\netrtwlanu.inf`）
     /// - `system_root`: 离线 Windows 路径（如 `D:\\Mount\\Windows`）
     /// - `system_drive`: 离线系统盘根目录（如 `D:\\Mount`）
-    pub unsafe fn offline_delete_driver(
-        &self,
-        inf_path: &Path,
-        system_root: &Path,
-        system_drive: &Path,
-        flags: u32,
-    ) -> Result<(), Box<dyn Error>> {
+    pub unsafe fn offline_delete_driver(&self, inf_path: &Path, system_root: &Path, system_drive: &Path, flags: u32) -> Result<(), Box<dyn Error>> {
         let inf_w = to_wide(inf_path.as_os_str());
         let root_w = to_wide(system_root.as_os_str());
         let drive_w = to_wide(system_drive.as_os_str());
@@ -286,9 +429,41 @@ impl DriverStore {
         }
     }
 
+    /// 获取离线系统中所有驱动包 INF 文件名列表
+    pub unsafe fn enum_offline_driver_packages(&self, offline_windows: &Path) -> Result<Vec<String>, Box<dyn Error>> {
+        let win_w = to_wide(offline_windows.as_os_str());
+
+        let mut result: Vec<String> = Vec::new();
+        let result_ptr = &mut result as *mut _ as usize;
+
+        let status = (self.offline_enum)(
+            Self::collect_inf_callback,
+            result_ptr,
+            win_w.as_ptr(),
+        );
+
+        if status != 0 {
+            return Err(format!("DriverStoreOfflineEnumDriverPackageW Error: 0x{:08X}", status).into());
+        }
+
+        Ok(result)
+    }
+
+    /// 回调函数：收集 INF 路径到 lparam 所指的 Vec<String>
+    unsafe extern "system" fn collect_inf_callback(inf_path: PCWSTR, lparam: usize) -> bool {
+        let vec_ptr = lparam as *mut Vec<String>;
+        if let Some(vec) = vec_ptr.as_mut() {
+            let len = (0..).take_while(|&i| *inf_path.add(i) != 0).count();
+            let str_slice = std::slice::from_raw_parts(inf_path, len);
+            let inf_str = String::from_utf16_lossy(str_slice);
+            vec.push(inf_str);
+        }
+        true
+    }
+
     /// 关闭仓库句柄
     pub unsafe fn close_store(&self, handle: HANDLE) -> Result<(), Box<dyn Error>> {
-        if !(self.close)(handle) {
+        if !(self.closeStore)(handle) {
             Err("DriverStoreClose Error".into())
         } else {
             Ok(())
