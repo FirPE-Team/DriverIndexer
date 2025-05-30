@@ -55,6 +55,11 @@ classify-driver = 整理驱动程序
 create-driver = 创建驱动包程序。打包程序与驱动包，便于分发
 driver-package-program-path = 驱动包程序路径
 
+## scan-devices
+scan-devices = 扫描硬件设备更改
+scan-devices-success = 扫描硬件设备更改成功
+scan-devices-failed = 扫描硬件设备更改失败
+
 # 验证器
 path-not-exist = 路径不存在，请确保输入的目录存在
 dir-not-exist = 目录不存在，请确保输入的目录存在

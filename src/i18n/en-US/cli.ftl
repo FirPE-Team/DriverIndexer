@@ -55,6 +55,11 @@ classify-driver = sort out the driver
 create-driver = Create a driver package. Packages are packaged with programs and drivers for easy distribution
 driver-package-program-path = Driver package program path
 
+## scan-devices
+scan-devices = Scan devices
+scan-devices-success = Scan devices success
+scan-devices-failed = Scan devices failed
+
 # validator
 path-not-exist = The path does not exist, please make sure the entered directory exists
 dir-not-exist = The directory does not exist, please make sure the entered directory exists

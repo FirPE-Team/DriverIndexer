@@ -257,5 +257,11 @@ pub fn cli<'a>() -> ArgMatches<'a> {
                         .help(&getLocaleText("driver-package-program-path", None)),
                 )
         )
+        // 扫描设备硬件更改
+        .subcommand(
+            SubCommand::with_name("scan-devices")
+                .about(&*getLocaleText("scan-devices", None))
+                .help_short("H")
+        )
         .get_matches()
 }

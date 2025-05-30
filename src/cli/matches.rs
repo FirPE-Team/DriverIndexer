@@ -2,6 +2,7 @@ use crate::cli::cli::{cli, ALL_DEVICE, DRIVE_CLASS, DRIVE_PATH, EJECTDRIVERCD, E
 use crate::command;
 use crate::i18n::getLocaleText;
 use crate::utils::console::{writeConsole, ConsoleType};
+use crate::utils::setupAPI;
 use crate::utils::util::{ejectDrive, getFileList, isDriverCD};
 use crate::LOG_PATH;
 use clap::ArgMatches;
@@ -234,6 +235,21 @@ pub fn matches(matches: ArgMatches<'_>) -> Result<(), Box<dyn Error>> {
             }
         };
     }
+
+    // 扫描硬件设备更改
+    if let Some(_matches) = matches.subcommand_matches("scan-devices") {
+        unsafe {
+            match setupAPI::rescan() {
+                true => {
+                    writeConsole(ConsoleType::Success, &getLocaleText("scan-devices-success", None));
+                }
+                false => {
+                    writeConsole(ConsoleType::Err, &getLocaleText("scan-devices-failed", None));
+                }
+            };
+        }
+    }
+
 
     Ok(())
 }
