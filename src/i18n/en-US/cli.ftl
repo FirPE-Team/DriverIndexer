@@ -36,13 +36,17 @@ match-all-device = Match all device
 driver-category = Set the install driver category
 only-unzip = Only unzip the driver without installing
 offline-import = Offline import driver
+eject-driver-cd = Eject virtual CD-ROM to detect the actual USB device.
+
+## load-offline-driver
+load-offline-driver = Load offline system driver
 
 ## import-driver
-import-driver = Import drivers
+import-driver = Import drivers, supports online and offline systems
 match-device = Match the native device
 
 ## remove-driver
-remove-driver = Remove drivers
+remove-driver = Remove drivers, supports online and offline systems
 
 ## classify-driver
 classify-driver = sort out the driver

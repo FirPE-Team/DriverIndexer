@@ -30,9 +30,10 @@ driver-unzip-failed = 驱动程序解压失败
 driver-unzip-success = 驱动程序解压成功
 driver-install-failed = 驱动程序安装失败
 driver-install-success = 驱动程序安装成功
+ejecting-driver-cd = 弹出免驱设备虚拟光驱 ({ $drive })
 
 # 加载离线驱动
-load-offline-driver = 加载离线系统驱动: { $path }
+loading-offline-driver = 加载离线系统驱动 ({ $path })
 not-found-offline-system = 没有找到离线系统
 
 # 导入驱动

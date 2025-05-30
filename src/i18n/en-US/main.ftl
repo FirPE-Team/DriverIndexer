@@ -30,9 +30,10 @@ driver-unzip-failed = Driver unzip failed
 driver-unzip-success = Driver unzip successfully
 driver-install-failed = Driver installation failed
 driver-install-success = Driver installed successfully
+ejecting-driver-cd = Eject virtual optical drive without drive device ({ $drive })
 
 # load-offline-driver
-load-offline-driver = Load offline system driver: { $path }
+loading-offline-driver = Load offline system driver ({ $path })
 not-found-offline-system = No offline systems found
 
 # import-driver

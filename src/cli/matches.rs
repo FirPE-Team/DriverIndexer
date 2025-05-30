@@ -1,8 +1,8 @@
-use crate::cli::cli::{cli, ALL_DEVICE, DRIVE_CLASS, DRIVE_PATH, EXTRACT_DRIVER, INDEX_PATH, MATCH_DEVICE, PASSWORD, PROGRAM_PATH, SYSTEM_DRIVE};
+use crate::cli::cli::{cli, ALL_DEVICE, DRIVE_CLASS, DRIVE_PATH, EJECTDRIVERCD, EXTRACT_DRIVER, INDEX_PATH, MATCH_DEVICE, PASSWORD, PROGRAM_PATH, SYSTEM_DRIVE};
 use crate::command;
 use crate::i18n::getLocaleText;
 use crate::utils::console::{writeConsole, ConsoleType};
-use crate::utils::util::getFileList;
+use crate::utils::util::{ejectDrive, getFileList, isDriverCD};
 use crate::LOG_PATH;
 use clap::ArgMatches;
 use fluent_templates::fluent_bundle::FluentValue;
@@ -30,14 +30,18 @@ pub fn matches(matches: ArgMatches<'_>) -> Result<(), Box<dyn Error>> {
             PathBuf::from(matches.value_of(INDEX_PATH).unwrap())
         } else {
             // 没有指定索引文件，使用默认索引文件名: 驱动包名.index
-            let indexName = format!(
-                "{}.index",
-                driverPath.file_stem().unwrap().to_str().unwrap()
-            );
+            let indexName = format!("{}.index", driverPath.file_stem().unwrap().to_str().unwrap());
             driverPath.parent().unwrap().join(indexName)
         };
 
-        command::create_index::createIndex(&driverPath, password, &indexPath)?;
+        writeConsole(ConsoleType::Info, &getLocaleText("processing", None));
+        return match command::create_index::createIndex(&driverPath, password, &indexPath) {
+            Ok(_) => { Ok(()) }
+            Err(e) => {
+                writeConsole(ConsoleType::Err, &e.to_string());
+                Err(e)
+            }
+        };
     }
 
     // 加载驱动
@@ -45,6 +49,20 @@ pub fn matches(matches: ArgMatches<'_>) -> Result<(), Box<dyn Error>> {
         let drivePath = PathBuf::from(matches.value_of(DRIVE_PATH).unwrap());
         let password = matches.value_of(PASSWORD);
         let extractPath = matches.value_of(EXTRACT_DRIVER);
+
+        // 弹出免驱设备虚拟光驱
+        if matches.is_present(EJECTDRIVERCD) {
+            for letter in b'C'..=b'Z' {
+                let drive = format!("{}:", letter as char);
+                let path = Path::new(&drive);
+                if path.exists() && isDriverCD(path) {
+                    let args: HashMap<String, FluentValue> = hash_map!("drive".to_string() => drive.clone().into());
+                    writeConsole(ConsoleType::Info, &getLocaleText("ejecting-driver-cd", Some(&args)));
+
+                    let _ = ejectDrive(path);
+                }
+            }
+        }
 
         // 处理通配符
         let driveName = drivePath.file_name().unwrap().to_str().unwrap();
@@ -87,6 +105,7 @@ pub fn matches(matches: ArgMatches<'_>) -> Result<(), Box<dyn Error>> {
 
                 let args: HashMap<String, FluentValue> = hash_map!("path".to_string() => drivePathItem.to_str().unwrap().into());
                 writeConsole(ConsoleType::Info, &getLocaleText("load-driver-package", Some(&args)));
+
                 command::load_driver::loadDriver(drivePathItem, password, index, matches.is_present(ALL_DEVICE), class, extractPath)?;
             }
         } else {
@@ -99,16 +118,25 @@ pub fn matches(matches: ArgMatches<'_>) -> Result<(), Box<dyn Error>> {
 
             let args: HashMap<String, FluentValue> = hash_map!("path".to_string() => drivePath.to_str().unwrap().into());
             writeConsole(ConsoleType::Info, &getLocaleText("load-driver-package", Some(&args)));
+
             command::load_driver::loadDriver(&drivePath, password, index, matches.is_present(ALL_DEVICE), class, extractPath)?;
         }
     }
 
     // 加载离线驱动
     if let Some(matches) = matches.subcommand_matches("load-offline-driver") {
-        let systemDrive = matches.value_of(SYSTEM_DRIVE).map(|systemDrive| Path::new(systemDrive));
+        let systemDrive = matches.value_of(SYSTEM_DRIVE).map(Path::new);
         let class = matches.value_of(DRIVE_CLASS).map(|class| class.to_string());
 
-        command::load_offline_driver::load_offline_driver(systemDrive, matches.is_present(ALL_DEVICE), class)?;
+        return match command::load_offline_driver::load_offline_driver(systemDrive, matches.is_present(ALL_DEVICE), class) {
+            Ok(_) => {
+                Ok(())
+            }
+            Err(e) => {
+                writeConsole(ConsoleType::Err, &e.to_string());
+                Err(e)
+            }
+        };
     }
 
     // 导入驱动
@@ -129,14 +157,27 @@ pub fn matches(matches: ArgMatches<'_>) -> Result<(), Box<dyn Error>> {
                 let args: HashMap<String, FluentValue> = hash_map!("path".to_string() => item.to_str().unwrap().into());
                 writeConsole(ConsoleType::Info, &getLocaleText("load-driver-package", Some(&args)));
 
-                command::import_driver::import_driver(&systemDrive, &item, password, matches.is_present(MATCH_DEVICE))?;
+                match command::import_driver::import_driver(&systemDrive, &item, password, matches.is_present(MATCH_DEVICE)) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        writeConsole(ConsoleType::Err, &e.to_string());
+                    }
+                };
             }
         } else {
             // 无通配符
             let args: HashMap<String, FluentValue> = hash_map!("path".to_string() => drivePath.to_str().unwrap().into());
             writeConsole(ConsoleType::Info, &getLocaleText("load-driver-package", Some(&args)));
 
-            command::import_driver::import_driver(&systemDrive, &drivePath, password, matches.is_present(MATCH_DEVICE))?;
+            return match command::import_driver::import_driver(&systemDrive, &drivePath, password, matches.is_present(MATCH_DEVICE)) {
+                Ok(_) => {
+                    Ok(())
+                }
+                Err(e) => {
+                    writeConsole(ConsoleType::Err, &e.to_string());
+                    Err(e)
+                }
+            };
         }
     }
 
@@ -154,7 +195,7 @@ pub fn matches(matches: ArgMatches<'_>) -> Result<(), Box<dyn Error>> {
                 Ok(())
             }
             Err(e) => {
-                writeConsole(ConsoleType::Err, &format!("{}, {}", getLocaleText("driver-remove-failed", None), e.to_string()));
+                writeConsole(ConsoleType::Err, &e.to_string());
                 Err(e)
             }
         };
@@ -164,8 +205,16 @@ pub fn matches(matches: ArgMatches<'_>) -> Result<(), Box<dyn Error>> {
     if let Some(matches) = matches.subcommand_matches("classify-driver") {
         let inputPath = PathBuf::from(matches.value_of(DRIVE_PATH).unwrap());
 
-        command::classify_driver::classify_driver(&inputPath)?;
-        writeConsole(ConsoleType::Success, &getLocaleText("Drivers-finishing-complete", None));
+        return match command::classify_driver::classify_driver(&inputPath) {
+            Ok(_) => {
+                writeConsole(ConsoleType::Success, &getLocaleText("Drivers-finishing-complete", None));
+                Ok(())
+            }
+            Err(e) => {
+                writeConsole(ConsoleType::Err, &e.to_string());
+                Err(e)
+            }
+        };
     }
 
     // 创建驱动包程序
@@ -173,7 +222,17 @@ pub fn matches(matches: ArgMatches<'_>) -> Result<(), Box<dyn Error>> {
         let inputPath = PathBuf::from(matches.value_of(DRIVE_PATH).unwrap());
         let outputPath = PathBuf::from(matches.value_of(PROGRAM_PATH).unwrap());
 
-        command::create_driver::createDriver(&inputPath, &outputPath)?;
+        writeConsole(ConsoleType::Info, &getLocaleText("processing", None));
+        return match command::create_driver::createDriver(&inputPath, &outputPath) {
+            Ok(_) => {
+                writeConsole(ConsoleType::Success, &getLocaleText("Driver-finishing-create", None));
+                Ok(())
+            }
+            Err(e) => {
+                writeConsole(ConsoleType::Err, &e.to_string());
+                Err(e)
+            }
+        };
     }
 
     Ok(())

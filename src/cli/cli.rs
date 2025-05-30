@@ -13,6 +13,7 @@ pub const MATCH_DEVICE: &str = "MatchDevice";
 pub const PASSWORD: &str = "Password";
 pub const OFFLINE_IMPORT: &str = "OfflineImport";
 pub const EXTRACT_DRIVER: &str = "ExtractDriver";
+pub const EJECTDRIVERCD: &str = "EjectDriverCD";
 pub const PROGRAM_PATH: &str = "ProgramPath";
 pub const SYSTEM_ROOT: &str = "SystemRoot";
 
@@ -123,6 +124,13 @@ pub fn cli<'a>() -> ArgMatches<'a> {
                         .long(EXTRACT_DRIVER)
                         .value_name(EXTRACT_DRIVER)
                         .help(&getLocaleText("only-unzip", None)),
+                )
+                // 选项-弹出免驱设备
+                .arg(
+                    Arg::with_name(EJECTDRIVERCD)
+                        .short("j")
+                        .long(EJECTDRIVERCD)
+                        .help(&getLocaleText("eject-driver-cd", None)),
                 )
         )
         // 加载离线驱动

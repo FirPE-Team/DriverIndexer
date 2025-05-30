@@ -36,16 +36,20 @@ match-all-device = 匹配所有设备
 driver-category = 设置安装的驱动程序类别
 only-unzip = 仅解压驱动程序而不安装
 offline-import = 离线导入驱动
+eject-driver-cd = 弹出免驱设备虚拟光驱以识别真实USB设备
+
+## load-offline-driver
+load-offline-driver = 加载离线系统驱动
 
 ## import-driver
-import-driver = 导入驱动
+import-driver = 导入驱动。支持在线系统、离线系统
 match-device = 匹配本机设备
 
 ## remove-driver
-remove-driver = 删除驱动
+remove-driver = 删除驱动。支持在线系统、离线系统
 
 ## classify-driver
-classify-driver = 整理驱动程序。
+classify-driver = 整理驱动程序
 
 ## create-driver
 create-driver = 创建驱动包程序。打包程序与驱动包，便于分发
