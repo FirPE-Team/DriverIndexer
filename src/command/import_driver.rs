@@ -17,7 +17,6 @@ pub fn import_driver(systemDrive: &Path, driverPath: &Path, password: Option<&st
     // 判断是否为驱动包
     if driverPath.is_file() {
         if !zip.isDriverPackage(driverPath).unwrap_or(false) {
-            writeConsole(ConsoleType::Err, &getLocaleText("no-driver-package", None));
             return Err(String::from(&getLocaleText("no-driver-package", None)).into());
         }
 
@@ -25,13 +24,11 @@ pub fn import_driver(systemDrive: &Path, driverPath: &Path, password: Option<&st
         if matchDevice {
             // 解压全部INF文件
             if !zip.extractFilesFromPath(driverPath, password, "*.inf", &driversPath)? {
-                writeConsole(ConsoleType::Err, &getLocaleText("driver-unzip-failed", None));
                 return Err(getLocaleText("driver-unzip-failed", None).into());
             }
         } else {
             // 解压全部驱动文件
             if !zip.extractFilesFromPath(driverPath, password, "*", &driversPath)? {
-                writeConsole(ConsoleType::Err, &getLocaleText("driver-unzip-failed", None));
                 return Err(String::from(&getLocaleText("driver-unzip-failed", None)).into());
             };
         }
@@ -47,7 +44,6 @@ pub fn import_driver(systemDrive: &Path, driverPath: &Path, password: Option<&st
         let devcon = Devcon::new()?;
         let hwIDList = devcon.getRealIdInfo(None)?;
         if hwIDList.is_empty() {
-            writeConsole(ConsoleType::Err, &getLocaleText("no-device", None));
             return Err(getLocaleText("no-device", None).into());
         }
 
@@ -62,7 +58,6 @@ pub fn import_driver(systemDrive: &Path, driverPath: &Path, password: Option<&st
         // 匹配驱动
         let matchHardwareAndDriver = getMatchInfo(&hwIDList, &infInfoList, None);
         if matchHardwareAndDriver.is_empty() {
-            writeConsole(ConsoleType::Err, &getLocaleText("no-found-driver-currently", None));
             return Err(String::from(&getLocaleText("no-found-driver-currently", None)).into());
         }
 
@@ -83,8 +78,7 @@ pub fn import_driver(systemDrive: &Path, driverPath: &Path, password: Option<&st
     let archCode = match getArchCode(systemDrive) {
         Ok(code @ (0x014c | 0x8664 | 0xAA64)) => code,
         Err(_) | _ => {
-            writeConsole(ConsoleType::Err, &getLocaleText("offline-Arch-Err", None));
-            return Err(getLocaleText("getOfflineArchErr", None).into());
+            return Err(getLocaleText("offline-Arch-Err", None).into());
         }
     };
     let arch = match archCode {
@@ -106,7 +100,7 @@ pub fn import_driver(systemDrive: &Path, driverPath: &Path, password: Option<&st
         unsafe {
             let driverStore = DriverStore::new()?;
             // 打开驱动库
-            let handle = driverStore.open_store(&*systemRoot, systemDrive)?;
+            let handle = driverStore.open_store(&systemRoot, systemDrive)?;
 
             for infPath in infList {
                 match driverStore.import_driver_to_store(handle, &infPath, arch, 0) {

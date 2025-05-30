@@ -193,8 +193,6 @@ impl InfInfo {
 }
 
 pub fn createIndex(drivePath: &Path, password: Option<&str>, saveIndexPath: &Path) -> Result<(), Box<dyn Error>> {
-    writeConsole(ConsoleType::Info, &getLocaleText("processing", None));
-
     let zip = sevenZip::new()?;
 
     // INF文件父路径
@@ -218,12 +216,11 @@ pub fn createIndex(drivePath: &Path, password: Option<&str>, saveIndexPath: &Pat
         // 从文件中创建索引文件
         infParentPath = TEMP_PATH.join(drivePath.file_stem().unwrap());
         // 解压INF文件
-        if !zip.extractFilesFromPath(drivePath, password, "*.inf", &infParentPath).unwrap() {
-            writeConsole(ConsoleType::Err, &getLocaleText("driver-unzip-failed", None));
+        if !zip.extractFilesFromPath(drivePath, password, "*.inf", &infParentPath)? {
             return Err(getLocaleText("driver-unzip-failed", None).into());
         }
 
-        infList = getFileList(&infParentPath, "*.inf").unwrap();
+        infList = getFileList(&infParentPath, "*.inf")?;
         // 如果输入的索引路径是相对路径，则令实际实际为驱动包所在路径
         indexPath = if saveIndexPath.is_relative() {
             drivePath.parent().unwrap().join(saveIndexPath)
@@ -233,7 +230,6 @@ pub fn createIndex(drivePath: &Path, password: Option<&str>, saveIndexPath: &Pat
     }
 
     if infList.is_empty() {
-        writeConsole(ConsoleType::Err, &getLocaleText("no-inf-find", None));
         return Err(getLocaleText("no-inf-find", None).into());
     }
 

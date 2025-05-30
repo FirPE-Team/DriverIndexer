@@ -1,12 +1,11 @@
-use std::{env, fs};
+use crate::command::create_index::createIndex;
+use crate::i18n::getLocaleText;
+use crate::{command, sevenZip, TEMP_PATH};
 use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use crate::i18n::getLocaleText;
-use crate::{command, sevenZip, TEMP_PATH};
-use crate::command::create_index::createIndex;
-use crate::utils::console::{writeConsole, ConsoleType};
+use std::{env, fs};
 
 /// 缓冲区大小（512KB）
 pub const BUFFER_SIZE: usize = 1024 * 512;
@@ -14,13 +13,10 @@ pub const BUFFER_SIZE: usize = 1024 * 512;
 /// # 创建驱动包程序
 /// 注意：自身程序需要进行加壳处理，否则7z无法处理压缩包程序
 pub fn createDriver(driverPath: &Path, outPath: &Path) -> Result<(), Box<dyn Error>> {
-    writeConsole(ConsoleType::Info, &getLocaleText("processing", None));
-
     let zip = sevenZip::new().unwrap();
     let mut driverPath = driverPath.to_path_buf();
 
     if driverPath.is_file() && !zip.isDriverPackage(&driverPath).unwrap_or(false) {
-        writeConsole(ConsoleType::Err, &getLocaleText("no-driver-package", None));
         return Err(String::from(&getLocaleText("no-driver-package", None)).into());
     }
     if driverPath.is_dir() {
@@ -28,11 +24,9 @@ pub fn createDriver(driverPath: &Path, outPath: &Path) -> Result<(), Box<dyn Err
         let indexPath = driverPath.join(format!("{}.index", driverPath.file_stem().unwrap().to_str().unwrap()));
         createIndex(&driverPath, None, &indexPath);
 
-        writeConsole(ConsoleType::Info, &getLocaleText("processing", None));
         // 打包驱动
         let tempArchivePath = TEMP_PATH.join(format!("{}.7z", driverPath.file_stem().unwrap().to_str().unwrap()));
         if zip.createArchivePage(&driverPath, &tempArchivePath).unwrap_or(false) && !tempArchivePath.exists() {
-            writeConsole(ConsoleType::Err, &getLocaleText("Pack-Driver-failed", None));
             return Err(String::from(&getLocaleText("Pack-Driver-failed", None)).into());
         }
         driverPath = tempArchivePath;
@@ -54,7 +48,6 @@ pub fn createDriver(driverPath: &Path, outPath: &Path) -> Result<(), Box<dyn Err
         if nbytes < buffer.len() { break; }
     }
 
-    writeConsole(ConsoleType::Success, &getLocaleText("Driver-finishing-create", None));
     Ok(())
 }
 
