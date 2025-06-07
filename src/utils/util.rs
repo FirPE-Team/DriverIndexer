@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::{env, fs};
 use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
 use windows::Win32::System::Ioctl::{PropertyStandardQuery, StorageDeviceProperty, IOCTL_STORAGE_QUERY_PROPERTY, STORAGE_DEVICE_DESCRIPTOR, STORAGE_PROPERTY_QUERY};
+use windows::Win32::System::SystemInformation::GetWindowsDirectoryW;
 use windows::{
     core::PCWSTR,
     Win32::{
@@ -144,8 +145,18 @@ pub fn isOfflineSystem(systemPath: &Path) -> Result<bool, Box<dyn Error>> {
     // 拼接 Windows 子目录
     let systemPath = PathBuf::from(systemPath).join("Windows");
 
+    // 判断系统目录是否存在
+    if !systemPath.exists() {
+        return Ok(false);
+    }
+
     // 获取当前系统的 SystemRoot，如 C:\Windows
-    let currentSystem = PathBuf::from(env::var("SystemRoot")?);
+    let mut buffer = [0u16; 260];
+    let len = unsafe { GetWindowsDirectoryW(Some(&mut buffer)) };
+    if len == 0 {
+        return Err(String::from("Failed to get system path").into());
+    }
+    let currentSystem = PathBuf::from(String::from_utf16_lossy(&buffer[..len as usize]));
 
     let input_path = systemPath.canonicalize()?;
     let current_path = currentSystem.canonicalize()?;
