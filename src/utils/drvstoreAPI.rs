@@ -3,22 +3,28 @@
 // [drvstore API 示例](https://github.com/WOA-Project/DriverUpdater/blob/2a5b56bd16de18799a54b9d9a56676ac68f259ef/DriverUpdater/Program.cs)
 
 use libloading::Library;
+use std::ffi::c_void;
+use std::os::windows::ffi::OsStringExt;
+use std::sync::Mutex;
 use std::{
     error::Error,
     ffi::OsStr,
     os::windows::ffi::OsStrExt,
     path::Path,
 };
+use windows::core::GUID;
+use windows::Win32::Foundation::{GetLastError, FILETIME};
 
 type PCWSTR = *const u16;
 type PWSTR = *mut u16;
+type PDWORD = *mut u32;
 type HANDLE = usize;
 
 /// DriverPackageOpenW
 type DSOF_OpenPackageW = unsafe extern "system" fn(
     PCWSTR,   // infPath
     u16,      // architecture (如 9 = AMD64)
-    PCWSTR,   // locale (en-US)
+    PCWSTR,   // locale
     u32,      // flags
     usize,    // resolveContext = 0
 ) -> HANDLE;
@@ -33,6 +39,22 @@ type DSOF_OpenStoreW = unsafe extern "system" fn(
     u32,       // Flags（保留 0）
     usize,     // Reserved（保留 NULL）
 ) -> HANDLE;
+
+/// DriverStoreCopyW
+type DSOF_CopyW = unsafe extern "system" fn(
+    HANDLE,  // hDriverStore
+    PCWSTR,  // DriverPackageInfPath
+    u16,     // ProcessorArchitecture
+    PCWSTR,  // Locale
+    u32,  // Flags
+    PCWSTR,  // DestinationPath
+) -> u32;
+
+/// DriverPackageGetVersionInfoW
+type DSOF_GetVerInfoW = unsafe extern "system" fn(
+    handle: HANDLE,
+    info: *mut DRIVER_PACKAGE_VERSION_INFO_RAW,
+) -> bool;
 
 /// DriverStoreImportW
 type DSOF_ImportW = unsafe extern "system" fn(
@@ -72,7 +94,7 @@ type DSOF_UnreflectCriticalW = unsafe extern "system" fn(
     PCWSTR,  // InfName
     u32,     // Flags
     PCWSTR,  // FilterDeviceIds (可为 "*" 或 null)
-) -> u32;
+) -> u32;    // NTSTATUS
 
 /// DriverStoreDeleteW
 type DSOF_DeleteW = unsafe extern "system" fn(
@@ -97,21 +119,47 @@ type DSOF_OfflineAddW = unsafe extern "system" fn(
 /// DriverStoreOfflineDeleteDriverPackageW
 type DSOF_OfflineDeleteW = unsafe extern "system" fn(PCWSTR, u32, u32, PCWSTR, PCWSTR) -> u32;
 
-pub type EnumDriverPackageCallback = unsafe extern "system" fn(PCWSTR, usize) -> bool;
-
-/// DriverStoreOfflineEnumDriverPackageW
-type DSOF_OfflineEnumW = unsafe extern "system" fn(
-    callback: EnumDriverPackageCallback,
-    lparam: usize,
-    target_system_root: PCWSTR,
-) -> u32;
-
 /// DriverStoreClose
 type DSOF_CloseStoreW = unsafe extern "system" fn(HANDLE) -> bool;
 
+#[repr(C)]
+#[derive(Debug, Clone)]
+struct DRIVER_PACKAGE_VERSION_INFO_RAW {
+    pub size: u32,                                 // Size of the structure
+    pub architecture: u16,                         // ProcessorArchitecture (enum)
+    pub locale_name: [u16; 85],                    // LOCALE_NAME_MAX_LENGTH
+    pub provider_name: [u16; 260],                 // MAX_PATH
+    pub driver_date: FILETIME,                     // Driver date
+    pub driver_version: u64,                       // Packed version
+    pub class_guid: GUID,                          // GUID of device class
+    pub class_name: [u16; 260],                    // MAX_PATH
+    pub class_version: u32,                        // Class version
+    pub catalog_file: [u16; 260],                  // MAX_PATH
+    pub flags: u32,                                // Flags
+}
+
+#[derive(Debug, Clone)]
+pub struct DriverPackageVersionInfo {
+    pub architecture: u16,
+    pub locale_name: String,
+    pub provider_name: String,
+    pub driver_date: FILETIME,
+    pub driver_version: u64,
+    pub class_guid: GUID,
+    pub class_name: String,
+    pub class_version: u32,
+    pub catalog_file: String,
+    pub flags: u32,
+}
+
 /// 将 &OsStr 转成以 NUL 结尾的 UTF-16 Vec<u16>
-fn to_wide(s: &OsStr) -> Vec<u16> {
+pub(crate) fn to_wide(s: &OsStr) -> Vec<u16> {
     s.encode_wide().chain(Some(0)).collect()
+}
+
+fn utf16_array_to_string(buf: &[u16]) -> String {
+    let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+    String::from_utf16_lossy(&buf[..len])
 }
 
 pub struct DriverStore {
@@ -119,6 +167,8 @@ pub struct DriverStore {
     openPackage: DSOF_OpenPackageW,
     closePackage: DSOF_ClosePackageW,
     openStore: DSOF_OpenStoreW,
+    copy: DSOF_CopyW,
+    getVerinfo: DSOF_GetVerInfoW,
     import: DSOF_ImportW,
     reflect: DSOF_ReflectW,
     unreflect: DSOF_UnreflectW,
@@ -127,7 +177,6 @@ pub struct DriverStore {
     delete: DSOF_DeleteW,
     offline_add: DSOF_OfflineAddW,
     offline_delete: DSOF_OfflineDeleteW,
-    offline_enum: DSOF_OfflineEnumW,
     closeStore: DSOF_CloseStoreW,
 }
 
@@ -139,6 +188,9 @@ impl DriverStore {
             openPackage: *lib.get(b"DriverPackageOpenW")?,
             closePackage: *lib.get(b"DriverPackageClose")?,
             openStore: *lib.get(b"DriverStoreOpenW")?,
+            copy: *lib.get(b"DriverStoreCopyW")?,
+            find: *lib.get(b"DriverStoreFindW")?,
+            getVerinfo: *lib.get(b"DriverPackageGetVersionInfoW")?,
             import: *lib.get(b"DriverStoreImportW")?,
             reflect: *lib.get(b"DriverStoreReflectW")?,
             unreflect: *lib.get(b"DriverStoreUnreflectW")?,
@@ -147,7 +199,7 @@ impl DriverStore {
             delete: *lib.get(b"DriverStoreDeleteW")?,
             offline_add: *lib.get(b"DriverStoreOfflineAddDriverPackageW")?,
             offline_delete: *lib.get(b"DriverStoreOfflineDeleteDriverPackageW")?,
-            offline_enum: *lib.get(b"DriverStoreOfflineEnumDriverPackageW")?,
+            enum_driver: *lib.get(b"DriverStoreOfflineEnumDriverPackageW")?,
             closeStore: *lib.get(b"DriverStoreClose")?,
             _lib: lib,
         })
@@ -157,12 +209,11 @@ impl DriverStore {
     /// 成功返回句柄（非零），失败返回 Err
     pub unsafe fn open_driver_package(&self, inf_path: &Path, arch: u16) -> Result<HANDLE, Box<dyn Error>> {
         let inf_path = to_wide(inf_path.as_os_str());
-        let locale_w = to_wide(OsStr::new("en-US"));
 
         let handle = (self.openPackage)(
             inf_path.as_ptr(),
             arch,
-            locale_w.as_ptr(),
+            std::ptr::null(),
             0,  // flags
             0,  // resolveContext
         );
@@ -195,16 +246,80 @@ impl DriverStore {
         }
     }
 
+    /// 复制驱动
+    ///
+    /// - `handle`:      来自 open_store 的句柄
+    /// - `inf_full`:    INF 全路径，例如
+    ///                  "C:\\Windows\\System32\\DriverStore\\FileRepository\\xxx\\xxx.inf"
+    /// - `arch`:        架构值 (0=x86, 9=AMD64, 12=ARM64)
+    /// - `destination`: 目标文件夹（必须存在），不可省略
+    ///
+    /// 返回：如果返回值 != 0 (ERROR_SUCCESS)，则表示失败，返回 Err(status)
+    pub fn copy_driver(&self, handle: HANDLE, inf_full: &Path, arch: u16, destination: &Path) -> Result<(), Box<dyn Error>> {
+        unsafe {
+            let inf_wide = to_wide(inf_full.as_os_str());
+            let dest_wide = to_wide(destination.as_os_str());
+
+            // flags = 0 表示常规复制
+            let result = (self.copy)(
+                handle,
+                inf_wide.as_ptr(),
+                arch,
+                std::ptr::null(), // locale = NULL
+                0,                // flags = None
+                dest_wide.as_ptr(),
+            );
+            if result != 0 {
+                Err(format!("DriverStoreCopyW Error: 0x{:08X}", result).into())
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    /// 调用 DriverPackageGetVersionInfoW，
+    pub unsafe fn get_version_info(&self, package_handle: HANDLE) -> Result<DriverPackageVersionInfo, Box<dyn Error>> {
+        let mut raw = DRIVER_PACKAGE_VERSION_INFO_RAW {
+            size: size_of::<DRIVER_PACKAGE_VERSION_INFO_RAW>() as u32,
+            architecture: 0,
+            locale_name: [0; 85],
+            provider_name: [0; 260],
+            driver_date: FILETIME::default(),
+            driver_version: 0,
+            class_guid: GUID::zeroed(),
+            class_name: [0; 260],
+            class_version: 0,
+            catalog_file: [0; 260],
+            flags: 0,
+        };
+
+        if !(self.getVerinfo)(package_handle, &mut raw as *mut _) {
+            return Err(format!("DriverPackageGetVersionInfoW Error: {:?}", GetLastError()).into());
+        }
+
+        Ok(DriverPackageVersionInfo {
+            architecture: raw.architecture,
+            locale_name: utf16_array_to_string(&raw.locale_name),
+            provider_name: utf16_array_to_string(&raw.provider_name),
+            driver_date: raw.driver_date,
+            driver_version: raw.driver_version,
+            class_guid: raw.class_guid,
+            class_name: utf16_array_to_string(&raw.class_name),
+            class_version: raw.class_version,
+            catalog_file: utf16_array_to_string(&raw.catalog_file),
+            flags: raw.flags,
+        })
+    }
+
     /// 导入 INF 驱动文件到指定 DriverStore 句柄
     /// - handle: DriverStoreOpenW 打开的句柄
     /// - inf_path: .inf 文件完整路径
     /// - arch: 处理器架构（0 = x86, 9 = AMD64, 12 = ARM64）
-    /// - locale: 区域（一般 "en-US"）
+    /// - locale: 区域
     /// - flags: 通常为 0
     /// - 返回：导入后的目标路径，如 `%SystemRoot%\System32\DriverStore\FileRepository\xxxx.inf_amd64_...`
     pub unsafe fn import_driver_to_store(&self, handle: HANDLE, inf_path: &Path, arch: u32, flags: u32) -> Result<String, Box<dyn Error>> {
         let inf_w = to_wide(inf_path.as_os_str());
-        let locale_w = to_wide(OsStr::new("en-US"));
 
         // 输出缓冲区 & 容量
         let mut buf = vec![0u16; 260];
@@ -214,7 +329,7 @@ impl DriverStore {
             handle,
             inf_w.as_ptr(),
             arch as u16,
-            locale_w.as_ptr(),
+            std::ptr::null(),
             flags,
             buf.as_mut_ptr(),
             buf_size,
@@ -226,7 +341,7 @@ impl DriverStore {
 
         // 从 buf 提取返回的 INF 文件名或相对路径
         let ret = String::from_utf16_lossy(
-            &buf.split(|&c| c == 0).next().unwrap_or(&[])
+            buf.split(|&c| c == 0).next().unwrap_or(&[])
         );
         Ok(ret)
     }
@@ -288,7 +403,6 @@ impl DriverStore {
     /// - 失败返回错误信息（`Err`）
     pub unsafe fn offline_add_driver(&self, inf_path: &Path, system_root: &Path, system_drive: &Path, flags: u32, arch: u32) -> Result<String, Box<dyn Error>> {
         let inf_w = to_wide(inf_path.as_os_str());
-        let lang = to_wide(OsStr::new("en-US"));
         let mut buf = vec![0u16; 260];
         let mut buf_len: i32 = buf.len() as i32;
         let root = to_wide(system_root.as_os_str());
@@ -297,9 +411,9 @@ impl DriverStore {
         let status = (self.offline_add)(
             inf_w.as_ptr(),
             flags,
-            0,                         // Reserved = NULL
-            arch as u16,              // ProcessorArchitecture
-            lang.as_ptr(),
+            0,
+            arch as u16,
+            std::ptr::null(),
             buf.as_mut_ptr(),
             &mut buf_len as *mut i32,
             root.as_ptr(),
@@ -427,38 +541,6 @@ impl DriverStore {
         } else {
             Err(format!("DriverStoreOfflineDeleteDriverPackageW Error: 0x{:08X}", status).into())
         }
-    }
-
-    /// 获取离线系统中所有驱动包 INF 文件名列表
-    pub unsafe fn enum_offline_driver_packages(&self, offline_windows: &Path) -> Result<Vec<String>, Box<dyn Error>> {
-        let win_w = to_wide(offline_windows.as_os_str());
-
-        let mut result: Vec<String> = Vec::new();
-        let result_ptr = &mut result as *mut _ as usize;
-
-        let status = (self.offline_enum)(
-            Self::collect_inf_callback,
-            result_ptr,
-            win_w.as_ptr(),
-        );
-
-        if status != 0 {
-            return Err(format!("DriverStoreOfflineEnumDriverPackageW Error: 0x{:08X}", status).into());
-        }
-
-        Ok(result)
-    }
-
-    /// 回调函数：收集 INF 路径到 lparam 所指的 Vec<String>
-    unsafe extern "system" fn collect_inf_callback(inf_path: PCWSTR, lparam: usize) -> bool {
-        let vec_ptr = lparam as *mut Vec<String>;
-        if let Some(vec) = vec_ptr.as_mut() {
-            let len = (0..).take_while(|&i| *inf_path.add(i) != 0).count();
-            let str_slice = std::slice::from_raw_parts(inf_path, len);
-            let inf_str = String::from_utf16_lossy(str_slice);
-            vec.push(inf_str);
-        }
-        true
     }
 
     /// 关闭仓库句柄
