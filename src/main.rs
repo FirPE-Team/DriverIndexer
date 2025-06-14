@@ -62,7 +62,7 @@ fn main() {
     }
 
     // 检测到当前程序内嵌驱动包时则自动加载
-    if command::create_driver::selfDriver() {
+    if env::args().len() <= 1 && command::create_driver::selfDriver() {
         remove_dir_all(&*TEMP_PATH).ok();
         return;
     };

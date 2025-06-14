@@ -334,7 +334,7 @@ pub fn getDriveBus(drivePath: &Path) -> Option<u32> {
 /// 返回值单位为字节（返回值 ÷ 1024 ÷ 1024即为MB）
 pub fn getDriveSpace(drivePath: &Path) -> Option<u64> {
     // 转换 &Path 为 null 结尾的宽字符 Vec<u16>
-    let mut wide_path: Vec<u16> = drivePath.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    let wide_path: Vec<u16> = drivePath.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
 
     let mut free_bytes_available = 0u64;
     let mut total_number_of_bytes = 0u64;

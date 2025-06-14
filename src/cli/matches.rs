@@ -250,7 +250,6 @@ pub fn matches(matches: ArgMatches<'_>) -> Result<(), Box<dyn Error>> {
         }
     }
 
-
     Ok(())
 }
 

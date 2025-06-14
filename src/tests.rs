@@ -3,22 +3,18 @@
 #![allow(unused_must_use)]
 
 mod Tests {
-    use crate::utils::devcon::Devcon;
-    use crate::utils::setupAPI;
-    use crate::utils::util::{compareVersiopn, String_utils};
-    use std::path::{PathBuf, Path};
-    use std::time::{SystemTime, UNIX_EPOCH};
-    use std::{env, mem, thread};
-    use std::error::Error;
-    use std::fs::File;
-    use std::slice::Windows;
     use crate::command::create_index::InfInfo;
-    use encoding::all::UTF_16LE;
-    use encoding::{Encoding, EncoderTrap};
-    use crate::i18n::getLocaleText;
-    use crate::utils::dismAPI::OfflineImportDriver;
+    use crate::utils::devcon::Devcon;
     use crate::utils::drvstoreAPI::DriverStore;
+    use crate::utils::setupAPI;
+    use crate::utils::setupAPI::get_class_description;
     use crate::utils::sevenZIP::sevenZip;
+    use crate::utils::util::{compareVersion, getDriveSpace, getFileList, isOfflineSystem};
+    use encoding::Encoding;
+    use std::fs::File;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::{env, thread};
 
     // 文件解压测试
     #[test]
@@ -30,7 +26,7 @@ mod Tests {
         let outPath = PathBuf::from(r"C:\Users\Administrator.W10-20201229857\Desktop\outPath");
 
         let zip = sevenZip::new().unwrap();
-        println!("{:?}", zip.extractFilesFromPath(&basePath, None,"", &outPath));
+        println!("{:?}", zip.extractFilesFromPath(&basePath, None, "", &outPath));
     }
 
     // 文件遍历测试
@@ -49,12 +45,10 @@ mod Tests {
     // 多国语言支持
     #[test]
     fn Language() {
-        use crate::bindings::Windows;
-        use crate::i18n::getLocaleText;
+        use windows::Win32::Globalization::GetUserDefaultUILanguage;
 
         unsafe {
-            // let langID = winapi::um::winnls::GetUserDefaultUILanguage();
-            let langID = Windows::Win32::Intl::GetUserDefaultUILanguage();
+            let langID = GetUserDefaultUILanguage();
 
             // 2052为简体中文
             println!("{:?}", langID);
@@ -88,20 +82,8 @@ mod Tests {
     fn parsingInfFileTest() {
         use crate::command::create_index::InfInfo;
 
-        // for id in r"IntcAzAudModelCopyFiles=10,system32\drivers".split(",") {
-        //     if !id.contains("\\") { continue }
-        //     if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '\\' || c == '&' || c == '_' || c == '.' || c == '-') {
-        //         println!("不符合");
-        //         return;
-        //     }
-        //     // 转为大写
-        //     let id = id.to_uppercase();
-        //     println!("{}", id);
-        // }
-        // return;
-
         let infPath = PathBuf::from(
-            r"D:\UserData\Desktop\51xx_10.0.18362.31253\RtsUer.inf",
+            r"D:\UserData\Desktop\ETDI2C.inf",
         );
 
         println!(
@@ -176,7 +158,6 @@ mod Tests {
     // 驱动加载测试
     #[test]
     fn loadDriverTest() {
-        use crate::command::load_driver::loadDriver;
         use crate::utils::devcon::Devcon;
 
         Devcon::new()
@@ -189,10 +170,10 @@ mod Tests {
             r"C:\Users\Administrator.W10-20201229857\Desktop\Network\USB无线网卡驱动.zip",
         );
 
-        let index = None;
+        // let index = None;
         // let index = Some(PathBuf::from(r"C:\Users\Administrator.W10-20201229857\Desktop\Network\USB无线网卡驱动.json"));
 
-        loadDriver(&basePath, None,index, false, None, false);
+        // loadDriver(&basePath, None,index, false, None, false);
     }
 
     // 驱动整理测试
@@ -200,20 +181,19 @@ mod Tests {
     fn classifyDriverTest() {
         use crate::command::classify_driver::classify_driver;
 
-        let basePath =
-            PathBuf::from(r"C:\Users\Administrator.W10-20201229857\Desktop\万能网卡驱动-驱动精灵");
+        let basePath = PathBuf::from(r"D:\UserData\Desktop\万能网卡驱动-驱动精灵");
         classify_driver(&basePath);
     }
 
     // 版本号对比测试
     #[test]
     fn versionMatches() {
-        println!("{:?}", compareVersiopn("1.0", "2.0"));
+        println!("{:?}", compareVersion("1.0.0.9", "1.0.1.9"));
 
-        let mut info = InfInfo::parsingIndex(Path::new(
-            r"D:\Project\FirPE\EFI\PETOOLS\驱动程序\无线网卡.index"
-        )).unwrap();
-        info.sort_by(|b, a| compareVersiopn(&*a.Version, &*b.Version));
+        // let mut info = InfInfo::parsingIndex(Path::new(
+        //     r"D:\UserData\Desktop\ETDI2C.inf"
+        // )).unwrap();
+        // info.sort_by(|b, a| compareVersiopn(&*a.Version, &*b.Version));
     }
 
     // 编码测试
@@ -310,21 +290,6 @@ mod Tests {
         }
     }
 
-    // SetupAPI测试
-    #[test]
-    fn setupAPITest() {
-        use crate::utils::setupAPI;
-
-        unsafe {
-            // let ClassArray = EnumDeviceClasses();
-            // for item in ClassArray {
-            //     EnumDevices(item);
-            // }
-            setupAPI::getDeviceInfo();
-            // println!("{}", setupAPI::rescan());
-        }
-    }
-
     // newdevAPI测试
     #[test]
     fn newdevAPITest() {
@@ -343,28 +308,87 @@ mod Tests {
 
     // drvstoreAPI测试
     #[test]
-    fn drvstoreAPITest() {
-        use crate::utils::drvstoreAPI::*;
+    fn importDriverTest() {
+        let systemDrive = Path::new(r"D:\Project\FirPE\Mount");
+        let systemRoot = systemDrive.join("Windows");
+        let installInfPath = Path::new(r"D:\UserData\Desktop\netrtl8188gu\netrtl8188gu.inf");
 
         unsafe {
             let driverStore = DriverStore::new().unwrap();
+            if isOfflineSystem(Path::new(systemDrive)).unwrap() {
+                println!("离线导入驱动");
+                println!("{:?}", driverStore.offline_add_driver(installInfPath, &*systemRoot, systemDrive, 0, 9));
+            } else {
+                // 在线导入驱动
+                let handle = driverStore.open_store(&*systemRoot, systemDrive).unwrap();
+                println!("打开驱动库: {:?}", handle);
+                println!("导入驱动: {:?}", driverStore.import_driver_to_store(handle, &installInfPath, 9, 0));
+                println!("关闭驱动库: {:?}", driverStore.close_store(handle).is_ok());
+            }
+        }
+    }
 
-            let systemPath = Path::new(r"D:\Project\FirPE\Mount");
-            let installInfPath = Path::new(r"D:\Project\FirPE\WimBuilder2插件\Projects\WIN10XPE\z-FirPE\Driver\iphone\netaapl64\netaapl64.inf");
-            let delInfPath = Path::new(r"viostor.inf");
+    #[test]
+    fn removeDriverTest() {
+        let systemDrive = Path::new(r"D:\Project\FirPE\Mount");
+        let systemRoot = systemDrive.join("Windows");
+        let installInfPath = Path::new(r"D:\UserData\Desktop\netrtl8188gu\netrtl8188gu.inf");
 
-            // let driverStoreHWID = driverStore.OpenDriverStore(systemPath);
-            // println!("打开驱动库: {:?}", driverStoreHWID);
-            println!("离线删除驱动: {:?}", driverStore.DeleteDriverStoreDriver(systemPath, delInfPath));
-            // println!("增加驱动: {:?}", driverStore.addDriverStorePackage(systemPath, inf));
-            // println!("关闭驱动库: {:?}", driverStore.CloseDriverStore(driverStoreHWID.unwrap()));
+        unsafe {
+            let driverStore = DriverStore::new().unwrap();
+            if isOfflineSystem(Path::new(systemDrive)).unwrap() {
+                println!("离线删除驱动");
+                // if let Some(infPath) = findInfFullPath(systemDrive, installInfPath.file_name().unwrap().to_str().unwrap()) {
+                //     println!("{:?}", driverStore.offline_delete_driver(&infPath, &systemRoot, systemDrive, 0));
+                // }
+            } else {
+                println!("在线删除驱动");
+                let handle = driverStore.open_store(&*systemRoot, systemDrive).unwrap();
+                println!("打开驱动库: {:?}", handle);
+                println!("删除驱动: {:?}", driverStore.delete_driver(handle, installInfPath, 0));
+                println!("关闭驱动库: {:?}", driverStore.close_store(handle).is_ok());
+            }
+        }
+    }
+
+    // drvstoreAPI测试
+    #[test]
+    fn drvstoreAPITest() {
+        let systemDrive = Path::new(r"C:\");
+        let systemRoot = systemDrive.join("Windows");
+        let installInfPath = Path::new(r"D:\UserData\Desktop\netrtl8188gu\netrtl8188gu.inf");
+
+        unsafe {
+            let driverStore = DriverStore::new().unwrap();
+            let handle = driverStore.open_store(&systemRoot, systemDrive).unwrap();
+            println!("打开驱动库: {:?}", handle);
+
+            // let (path, info_opt) = driverStore.find_driver_package(handle, &systemRoot.join("inf").join("1394.inf").to_str().unwrap(), 9).unwrap();
+            // println!("{:#?}", path);
+            // println!("{:#?}", info_opt);
+
+            // for item in getFileList(&*systemRoot.join("inf"), "*.inf").unwrap() {
+            //     if let Some((path, info_opt)) = driverStore.find_driver_package(handle, &item, 9) {
+            //         println!("{}", path);
+            //         println!("{:?}", info_opt);
+            //     }
+            // }
+
+            // println!("{:?}", driverStore.copy_driver(handle, Path::new(r"C:\Windows\System32\DriverStore\FileRepository\netrtl8188gu.inf_amd64_2a540f1c52f7ddb1\netrtl8188gu.inf"), 9, Path::new(r"D:\UserData\Desktop\123")));
+
+            let handle = driverStore.open_driver(Path::new(r"C:\Windows\System32\DriverStore\FileRepository\netrtl8188gu.inf_amd64_2a540f1c52f7ddb1\netrtl8188gu.inf"), 9).unwrap();
+            println!("{}", handle);
+            println!("{:#?}", driverStore.get_version_info(handle).unwrap());
+            driverStore.close_package(handle);
+
+            driverStore.close_store(handle);
         }
     }
 
     #[test]
     fn writeRegTest() {
-        use winreg::enums::HKEY_LOCAL_MACHINE;
-        use winreg::RegKey;
+        // use winreg::enums::HKEY_LOCAL_MACHINE;
+        // use winreg::RegKey;
 
         // 关闭驱动数字验证
         // HKLM\SYSTEM\Setup\SystemSetupInProgress=#1
@@ -372,21 +396,47 @@ mod Tests {
         // 恢复驱动数字验证（默认）
         // HKLM\SYSTEM\Setup\SystemSetupInProgress=#0
 
-        let setup = RegKey::predef(HKEY_LOCAL_MACHINE)
-            .open_subkey(r"SYSTEM\Setup")
-            .unwrap();
+        // let setup = RegKey::predef(HKEY_LOCAL_MACHINE)
+        //     .open_subkey(r"SYSTEM\Setup")
+        //     .unwrap();
 
-        setup
-            .set_value("SystemSetupInProgress", &(1 as u32))
-            .unwrap();
+        // setup
+        //     .set_value("SystemSetupInProgress", &(1 as u32))
+        //     .unwrap();
 
-        let value: u32 = setup.get_value("SystemSetupInProgress").unwrap();
-        println!("{:?}", value);
+        // let value: u32 = setup.get_value("SystemSetupInProgress").unwrap();
+        // println!("{:?}", value);
     }
 
     #[test]
-    fn tests() {
-        let result = OfflineImportDriver(&Path::new(r"D:\Project\FirPE\Mount"), &Path::new(r"D:\Project\FirPE\WimBuilder2插件\Projects\WIN10XPE\z-FirPE\Driver\KVM\viostor"));
-        println!("{:?}", result);
+    fn getOfflineArchTest() {
+        println!("{:?}", crate::utils::util::getArchCode(Path::new(r"C:\")));
+    }
+
+    #[test]
+    fn loadOfflineDriverTest() {
+        let mut candidates = Vec::new();
+        for letter in b'C'..=b'Z' {
+            let drive = format!("{}:\\Windows", letter as char);
+            let path = Path::new(&drive);
+            if path.exists() && path.join("System32").join("ntoskrnl.exe").exists() {
+                candidates.push(path.to_path_buf());
+            }
+        }
+        println!("{:?}", candidates);
+    }
+
+    #[test]
+    fn ejectDriveTest() {
+        // println!("{:?}", getDriveType(Path::new("F:")));
+        // println!("{:?}", getDriveBus(Path::new("G:")));
+        // println!("{:?}", getDriveBus(Path::new("h:")));
+        // println!("{:?}", ejectDrive(Path::new("G:\\")));
+        println!("{:?}", getDriveSpace(Path::new("F:")));
+    }
+
+    #[test]
+    fn guidTest() {
+        unsafe { println!("{:?}", get_class_description("4D36E972-E325-11CE-BFC1-08002BE10318")); }
     }
 }
