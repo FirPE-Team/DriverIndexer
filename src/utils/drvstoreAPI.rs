@@ -248,7 +248,7 @@ pub struct DriverStore {
     openPackage: DSOF_OpenPackageW,
     closePackage: DSOF_ClosePackageW,
     openStore: DSOF_OpenStoreW,
-    copy: DSOF_CopyW,
+    copy: Option<DSOF_CopyW>,
     find: DSOF_FindW,
     getVerinfo: DSOF_GetVerInfoW,
     import: DSOF_ImportW,
@@ -362,6 +362,8 @@ impl DriverStore {
 
     /// 复制驱动
     ///
+    /// 注意：此 API 不支持 Win7
+    ///
     /// 参数
     /// - `handle`:      来自 open_store 的句柄
     /// - `inf_full`:    INF 全路径，例如
@@ -372,25 +374,25 @@ impl DriverStore {
     /// 返回
     /// - `Ok(())`:      返回成功
     /// - `Err(...)`：   失败则返回包含 Win32 错误码的说明
-    pub fn copy_driver(&self, handle: HANDLE, inf_full: &Path, arch: u16, destination: &Path) -> Result<(), Box<dyn Error>> {
-        unsafe {
-            let inf_wide = to_wide(inf_full.as_os_str());
-            let dest_wide = to_wide(destination.as_os_str());
+    pub unsafe fn copy_driver(&self, handle: HANDLE, inf_full: &Path, arch: u16, destination: &Path) -> Result<(), Box<dyn Error>> {
+        let copy_fn = self.copy.ok_or_else(|| "DriverStoreCopyW is not supported on this system".to_string())?;
 
-            // flags = 0 表示常规复制
-            let result = (self.copy)(
-                handle,
-                inf_wide.as_ptr(),
-                arch,
-                ptr::null(), // locale = NULL
-                0,                // flags = None
-                dest_wide.as_ptr(),
-            );
-            if result != 0 {
-                Err(format!("DriverStoreCopyW Error: 0x{:08X}", result).into())
-            } else {
-                Ok(())
-            }
+        let inf_wide = to_wide(inf_full.as_os_str());
+        let dest_wide = to_wide(destination.as_os_str());
+
+        // flags = 0 表示常规复制
+        let result = copy_fn(
+            handle,
+            inf_wide.as_ptr(),
+            arch,
+            ptr::null(),      // locale = NULL
+            0,                // flags = None
+            dest_wide.as_ptr(),
+        );
+        if result != 0 {
+            Err(format!("DriverStoreCopyW Error: 0x{:08X}", result).into())
+        } else {
+            Ok(())
         }
     }
 
