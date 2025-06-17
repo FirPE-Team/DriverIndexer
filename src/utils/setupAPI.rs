@@ -1,7 +1,9 @@
 use std::error::Error;
-use uuid::Uuid;
-use windows::core::GUID;
+use std::ffi::OsStr;
+use std::os::windows::ffi::OsStrExt;
+use windows::core::PCWSTR;
 use windows::Win32::Devices::DeviceAndDriverInstallation::{CM_Locate_DevNodeW, CM_Reenumerate_DevNode, SetupDiGetClassDescriptionW, CM_LOCATE_DEVNODE_NORMAL, CONFIGRET};
+use windows::Win32::System::Com::CLSIDFromString;
 
 // https://docs.microsoft.com/zh-cn/windows-hardware/drivers/install/using-device-installation-functions
 /// 获取硬件信息
@@ -39,20 +41,18 @@ pub unsafe fn rescan() -> bool {
 /// 获取驱动GUID类说明
 ///
 /// 参数
-/// - `guid`: guid 类
+/// - `guid(&str)`: guid 类，需要使用{}包裹guid
 ///
 /// 返回
 /// - `Ok(String)`:  成功返回类名的描述
 /// - `Err(...)`：   失败则返回错误
-pub unsafe fn get_class_description(guid: &str) -> Result<String, Box<dyn Error>> {
-    let uuid = Uuid::parse_str(guid)?;
-    let (data1, data2, data3, data4) = uuid.as_fields();
-    let guid_raw = GUID { data1, data2, data3, data4: *data4 };
+pub unsafe fn get_class_description(guid_str: &str) -> Result<String, Box<dyn Error>> {
+    let guid_wide: Vec<u16> = OsStr::new(guid_str).encode_wide().chain(Some(0)).collect();
+    let guid_raw = CLSIDFromString(PCWSTR(guid_wide.as_ptr()))?;
 
     let mut buf: [u16; 256] = [0; 256];
     let mut needed: u32 = 0;
-
-    SetupDiGetClassDescriptionW(&guid_raw as *const GUID, &mut buf, Some(&mut needed))?;
+    SetupDiGetClassDescriptionW(&guid_raw, &mut buf, Some(&mut needed))?;
 
     let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
     Ok(String::from_utf16_lossy(&buf[..len]))
