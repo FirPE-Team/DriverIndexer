@@ -5,7 +5,7 @@ use std::cmp::Ordering;
 use std::error::Error;
 use std::ffi::{OsStr, OsString};
 use std::fs::{read, File, OpenOptions};
-use std::io::Write;
+use std::io::{BufWriter, Write};
 use std::iter::repeat_with;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -26,28 +26,50 @@ use windows::{
 };
 
 /// 写到文件
+///
+/// 参数
+/// - `filePath`: 静态文件名
+/// - `outFilePath`: 输出路径
+///
+/// 返回
+/// - `Ok(())`: 写入成功
+/// - `Err(...)`：失败则返回错误
 pub fn writeEmbedFile(filePath: &str, outFilePath: &Path) -> Result<(), Box<dyn Error>> {
-    let file = Asset::get(filePath).unwrap();
+    let file = Asset::get(filePath).ok_or_else(|| {
+        format!("Embedded file not found: {}", filePath)
+    })?;
     File::create(outFilePath)?.write_all(&file.data)?;
     Ok(())
 }
 
 /// 写日志
+///
+/// 参数
+/// - `logPath`: 日志路径
+/// - `content` 日志内容
+///
+/// 返回
+/// - `Ok(())`: 写入成功
+/// - `Err(...)`：失败则返回错误
 pub fn writeLogFile(logPath: &Path, content: &str) -> Result<(), Box<dyn Error>> {
-    // 尝试创建文件
-    if !logPath.exists() {
-        File::create(logPath).expect("无法创建日志文件");
-    }
-    // 以追加模式打开文件
-    let mut file = OpenOptions::new().append(true).open(logPath)?;
-    file.write_all(format!("{}\r\n", content).as_bytes())?;
+    let file = OpenOptions::new()
+        .create(true)  // 如果不存在则创建
+        .append(true)  // 追加模式
+        .open(logPath)?;
+    let mut writer = BufWriter::new(file);
+    writeln!(writer, "{}", content)?;  // 自动追加换行
     Ok(())
 }
 
 /// 遍历目录及子目录下的所有指定文件
-/// # 参数
-/// 1. 目录路径
-/// 2. 文件通配符 如 *.inf
+///
+/// 参数
+/// - `path`: 目录路径
+/// - `fileType`: 文件通配符（如 *.inf）
+///
+/// 返回
+/// - `Ok(Vec<PathBuf>)`: 文件列表
+/// - `Err(...)`：失败则返回错误
 pub fn getFileList(path: &Path, fileType: &str) -> Result<Vec<PathBuf>, Box<dyn Error>> {
     let srerch = glob::glob_with(
         &format!(r"{}\**\{}", path.to_str().unwrap(), fileType),
@@ -78,6 +100,14 @@ pub fn isArchive(archivePath: &Path) -> bool {
 }
 
 /// 比较版本号大小
+///
+/// 参数
+/// - `version1`: 版本号1
+/// - `version2`: 版本号2
+///
+/// 返回
+/// - `Ok(Ordering)`
+/// - `Err(...)`：失败则返回错误
 pub fn compareVersion(version1: &str, version2: &str) -> Result<Ordering, Box<dyn Error>> {
     let nums1: Vec<&str> = version1.split('.').collect();
     let nums2: Vec<&str> = version2.split('.').collect();
@@ -103,10 +133,14 @@ pub fn compareVersion(version1: &str, version2: &str) -> Result<Ordering, Box<dy
 }
 
 /// 生成临时文件名
-/// # 参数
-/// 1. 前缀
-/// 2. 后缀
-/// 3. 长度
+///
+/// 参数
+/// - `prefix`: 前缀
+/// - `suffix`: 后缀
+/// - `rand_len`: 长度
+///
+/// 返回
+/// - `OsString` : 临时文件名
 pub fn getTmpName(prefix: &str, suffix: &str, rand_len: usize) -> OsString {
     let capacity = prefix
         .len()
@@ -141,6 +175,13 @@ pub fn extract_vars(s: &str) -> Vec<String> {
 }
 
 /// 是否为离线系统
+///
+/// 参数
+/// - `systemPath`: 系统路径
+///
+/// 返回
+/// - `Ok(bool)`: 是返回 `true`，否返回 `false`
+/// - `Err(...)`：失败则返回错误
 pub fn isOfflineSystem(systemPath: &Path) -> Result<bool, Box<dyn Error>> {
     // 拼接 Windows 子目录
     let systemPath = PathBuf::from(systemPath).join("Windows");
@@ -164,15 +205,17 @@ pub fn isOfflineSystem(systemPath: &Path) -> Result<bool, Box<dyn Error>> {
     Ok(input_path != current_path)
 }
 
-/// # 获取系统架构
-/// ## 参数
-/// 1.系统目录
-/// ## 返回值
-/// - Ok(u16)：PE 文件 Machine 字段
+/// 获取系统架构
+///
+/// 参数
+/// - `systemPath`: 系统目录
+///
+/// 返回
+/// - `Ok(u16)`: PE 文件 Machine 字段
 ///   - 0x014c → x86
 ///   - 0x8664 → x64
 ///   - 0xAA64 → ARM64
-/// - Err：读取或解析失败
+/// - `Err(...)`：读取或解析失败
 pub fn getArchCode(systemPath: &Path) -> Result<u16, Box<dyn Error>> {
     let krnl_path = systemPath.join("Windows").join("System32").join("ntoskrnl.exe");
     let bytes = read(&krnl_path)?;
@@ -183,6 +226,9 @@ pub fn getArchCode(systemPath: &Path) -> Result<u16, Box<dyn Error>> {
 }
 
 /// 查找离线系统盘
+///
+/// 返回
+/// - `Vec<PathBuf>`: 系统盘列表
 pub fn findOfflineSystemDrive() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
 
@@ -250,16 +296,18 @@ pub fn ejectDrive(drivePath: &Path) -> Result<(), Box<dyn Error>> {
 }
 
 /// 获取设备类型
-/// # 参数
-/// 1.盘符
-/// # 返回值
-/// 0: 无法确定驱动器类型。
-/// 1: 根路径无效;例如，在指定路径上没有装载卷。
-/// 2: 驱动器具有可移动媒体;例如，软盘驱动器、拇指驱动器或闪存卡读卡器。
-/// 3: 驱动器具有固定媒体;例如，硬盘驱动器或闪存驱动器。
-/// 4: 驱动器是远程（网络）驱动器。
-/// 5: 驱动器是 CD-ROM 驱动器。
-/// 6: 驱动器是 RAM 磁盘。
+///
+/// 参数
+/// - `drive_path`: 盘符
+///
+/// 返回
+/// - `0`: 无法确定驱动器类型。
+/// - `1`: 根路径无效;例如，在指定路径上没有装载卷。
+/// - `2`: 驱动器具有可移动媒体;例如，软盘驱动器、拇指驱动器或闪存卡读卡器。
+/// - `3`: 驱动器具有固定媒体;例如，硬盘驱动器或闪存驱动器。
+/// - `4`: 驱动器是远程（网络）驱动器。
+/// - `5`: 驱动器是 CD-ROM 驱动器。
+/// - `6`: 驱动器是 RAM 磁盘。
 pub fn getDriveType(drive_path: &Path) -> u32 {
     // 传入格式需要是类似 "E:\" 的路径，确保最后有反斜杠
     let mut drive_str = drive_path.as_os_str().encode_wide().collect::<Vec<u16>>();
@@ -272,6 +320,9 @@ pub fn getDriveType(drive_path: &Path) -> u32 {
 }
 
 /// 获取指定盘符设备的 BusType（返回值为 u8），失败返回 None
+///
+/// 参数
+/// - `drivePath`: 盘符
 pub fn getDriveBus(drivePath: &Path) -> Option<u32> {
     // 盘符必须形如 "D:"，我们需要构造设备路径 "\\.\D:"
     let drive_letter = drivePath.to_str().ok_or("Invalid drive path").unwrap().chars().take(2).collect::<String>();
@@ -331,7 +382,12 @@ pub fn getDriveBus(drivePath: &Path) -> Option<u32> {
 
 /// 获取指定盘符设备的总空间
 ///
-/// 返回值单位为字节（返回值 ÷ 1024 ÷ 1024即为MB）
+/// 参数
+/// - `drive_path`: 盘符
+///
+/// 返回
+/// - `Some(u64)`: 返回值单位为字节（返回值 ÷ 1024 ÷ 1024即为MB）
+/// - `None`: 获取出错
 pub fn getDriveSpace(drivePath: &Path) -> Option<u64> {
     // 转换 &Path 为 null 结尾的宽字符 Vec<u16>
     let wide_path: Vec<u16> = drivePath.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
@@ -356,6 +412,13 @@ pub fn getDriveSpace(drivePath: &Path) -> Option<u64> {
 }
 
 /// 判断指定盘符是否为免驱设备虚拟的CDROM盘符
+///
+/// 参数
+/// - `drive_path`: 盘符
+///
+/// 返回
+/// - `true`: 是
+/// - `false`: 不是
 pub fn isDriverCD(drivePath: &Path) -> bool {
     // 判断是否为CDROM
     if getDriveType(drivePath) != 5 {
