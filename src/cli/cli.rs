@@ -12,7 +12,9 @@ pub const ALL_DEVICE: &str = "AllDevice";
 pub const MATCH_DEVICE: &str = "MatchDevice";
 pub const PASSWORD: &str = "Password";
 pub const OFFLINE_IMPORT: &str = "OfflineImport";
-pub const EXTRACT_DRIVER: &str = "ExtractDriver";
+pub const EXTRACT_PATH: &str = "ExtractPath";
+pub const EXPORT_PATH: &str = "ExportPath";
+pub const DRIVER_NAME: &str = "DriverName";
 pub const EJECTDRIVERCD: &str = "EjectDriverCD";
 pub const PROGRAM_PATH: &str = "ProgramPath";
 pub const SYSTEM_ROOT: &str = "SystemRoot";
@@ -119,10 +121,10 @@ pub fn cli<'a>() -> ArgMatches<'a> {
                 )
                 // 选项-仅解压不安装
                 .arg(
-                    Arg::with_name(EXTRACT_DRIVER)
+                    Arg::with_name(EXTRACT_PATH)
                         .short("e")
-                        .long(EXTRACT_DRIVER)
-                        .value_name(EXTRACT_DRIVER)
+                        .long(EXTRACT_PATH)
+                        .value_name(EXTRACT_PATH)
                         .help(&getLocaleText("only-unzip", None)),
                 )
                 // 选项-弹出免驱设备
@@ -199,6 +201,44 @@ pub fn cli<'a>() -> ArgMatches<'a> {
                         .short("m")
                         .long(MATCH_DEVICE)
                         .help(&getLocaleText("match-device", None)),
+                )
+        )
+        // 导出驱动
+        .subcommand(
+            SubCommand::with_name("export-driver")
+                .about(&*getLocaleText("export-driver", None))
+                .help_short("H")
+                // 参数-系统盘
+                .arg(
+                    Arg::with_name(SYSTEM_DRIVE)
+                        .value_name(SYSTEM_DRIVE)
+                        .validator(isValidSystemPath)
+                        .required(true)
+                        .index(1),
+                )
+                // 参数-输出位置
+                .arg(
+                    Arg::with_name(EXPORT_PATH)
+                        .value_name(EXPORT_PATH)
+                        .required(true)
+                        .index(2),
+                )
+                // 选项-驱动类别
+                .arg(
+                    Arg::with_name(DRIVE_CLASS)
+                        .short("c")
+                        .long(DRIVE_CLASS)
+                        .value_name(DRIVE_CLASS)
+                        .validator(isValidDriverClass)
+                        .help(&getLocaleText("driver-category", None)),
+                )
+                // 选项-驱动名称
+                .arg(
+                    Arg::with_name(DRIVER_NAME)
+                        .short("n")
+                        .long(DRIVER_NAME)
+                        .value_name(DRIVER_NAME)
+                        .help(&getLocaleText("driver-name", None)),
                 )
         )
         // 删除驱动

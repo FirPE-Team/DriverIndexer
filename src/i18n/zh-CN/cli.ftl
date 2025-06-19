@@ -45,6 +45,10 @@ load-offline-driver = 加载离线系统驱动
 import-driver = 导入驱动。支持在线系统、离线系统
 match-device = 匹配本机设备
 
+## export-driver
+export-driver = 导出驱动。支持在线系统、离线系统
+driver-name = 驱动名称
+
 ## remove-driver
 remove-driver = 删除驱动。支持在线系统、离线系统
 

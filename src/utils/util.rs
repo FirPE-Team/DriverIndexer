@@ -9,7 +9,8 @@ use std::io::{BufWriter, Write};
 use std::iter::repeat_with;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
-use std::{env, fs};
+use std::{env, fs, io};
+use walkdir::WalkDir;
 use windows::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
 use windows::Win32::System::Ioctl::{PropertyStandardQuery, StorageDeviceProperty, IOCTL_STORAGE_QUERY_PROPERTY, STORAGE_DEVICE_DESCRIPTOR, STORAGE_PROPERTY_QUERY};
 use windows::Win32::System::SystemInformation::GetWindowsDirectoryW;
@@ -85,6 +86,50 @@ pub fn getFileList(path: &Path, fileType: &str) -> Result<Vec<PathBuf>, Box<dyn 
         .map(|item| item.unwrap())
         .collect();
     Ok(fileList)
+}
+
+/// 复制目录及子目录下的所有文件
+///
+/// 参数
+/// - `src`: 源路径
+/// - `dst`: 目标路径
+///
+/// 返回
+/// - `Ok(())`: 成功
+/// - `Err(...)`：失败则返回错误
+pub fn copy_dir(src: &Path, dst: &Path) -> io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in WalkDir::new(src) {
+        let entry = entry?;
+        let rel = entry.path().strip_prefix(src).unwrap();
+        let target = dst.join(rel);
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&target)?;
+        } else {
+            fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
+}
+
+/// 移动目录及子目录下的所有文件
+///
+/// 参数
+/// - `src`: 源路径
+/// - `dst`: 目标路径
+///
+/// 返回
+/// - `Ok(())`: 成功
+/// - `Err(...)`：失败则返回错误
+pub fn move_dir(src: &Path, dst: &Path) -> io::Result<()> {
+    // 如果在同一文件系统，rename 最快
+    if fs::rename(src, dst).is_ok() {
+        return Ok(());
+    }
+    // 否则，退回到复制 + 删除
+    copy_dir(src, dst)?;
+    fs::remove_dir_all(src)?;
+    Ok(())
 }
 
 /// 是否为压缩包文件

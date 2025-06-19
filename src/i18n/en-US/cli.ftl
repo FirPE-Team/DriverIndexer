@@ -45,6 +45,10 @@ load-offline-driver = Load offline system driver
 import-driver = Import drivers, supports online and offline systems
 match-device = Match the native device
 
+## export-driver
+export-driver = Export drivers, supports online and offline systems
+driver-name = Driver name
+
 ## remove-driver
 remove-driver = Remove drivers, supports online and offline systems
 

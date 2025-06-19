@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
-use windows::core::PCWSTR;
+use windows::core::{GUID, PCWSTR};
 use windows::Win32::Devices::DeviceAndDriverInstallation::{CM_Locate_DevNodeW, CM_Reenumerate_DevNode, SetupDiGetClassDescriptionW, CM_LOCATE_DEVNODE_NORMAL, CONFIGRET};
 use windows::Win32::System::Com::CLSIDFromString;
 
@@ -41,12 +41,29 @@ pub unsafe fn rescan() -> bool {
 /// 获取驱动GUID类说明
 ///
 /// 参数
+/// - `guid(GUID)`: GUID类型
+///
+/// 返回
+/// - `Ok(String)`:  成功返回类名的描述
+/// - `Err(...)`：   失败则返回错误
+pub unsafe fn get_class_description(guid: GUID) -> Result<String, Box<dyn Error>> {
+    let mut buf: [u16; 256] = [0; 256];
+    let mut needed: u32 = 0;
+    SetupDiGetClassDescriptionW(&guid, &mut buf, Some(&mut needed))?;
+
+    let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+    Ok(String::from_utf16_lossy(&buf[..len]))
+}
+
+/// 获取驱动GUID类说明-通过字符串
+///
+/// 参数
 /// - `guid(&str)`: guid 类，需要使用{}包裹guid
 ///
 /// 返回
 /// - `Ok(String)`:  成功返回类名的描述
 /// - `Err(...)`：   失败则返回错误
-pub unsafe fn get_class_description(guid_str: &str) -> Result<String, Box<dyn Error>> {
+pub unsafe fn get_class_description_str(guid_str: &str) -> Result<String, Box<dyn Error>> {
     let guid_wide: Vec<u16> = OsStr::new(guid_str).encode_wide().chain(Some(0)).collect();
     let guid_raw = CLSIDFromString(PCWSTR(guid_wide.as_ptr()))?;
 
