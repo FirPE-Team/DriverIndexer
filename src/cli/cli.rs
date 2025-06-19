@@ -256,11 +256,19 @@ pub fn cli<'a>() -> ArgMatches<'a> {
                 )
                 // 参数-驱动
                 .arg(
-                    Arg::with_name(DRIVE_PATH)
-                        .value_name(DRIVE_PATH)
-                        .required(true)
+                    Arg::with_name(DRIVER_NAME)
+                        .value_name(DRIVER_NAME)
                         .index(2)
-                        .help(&getLocaleText("package-path", None)),
+                        .help(&getLocaleText("driver-name", None)),
+                )
+                // 选项-驱动类别
+                .arg(
+                    Arg::with_name(DRIVE_CLASS)
+                        .short("c")
+                        .long(DRIVE_CLASS)
+                        .value_name(DRIVE_CLASS)
+                        .validator(isValidDriverClass)
+                        .help(&getLocaleText("driver-category", None)),
                 )
         )
         // 整理驱动

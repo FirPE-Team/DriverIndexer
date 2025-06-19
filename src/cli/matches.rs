@@ -204,12 +204,10 @@ pub fn matches(matches: ArgMatches<'_>) -> Result<(), Box<dyn Error>> {
     // 删除驱动
     if let Some(matches) = matches.subcommand_matches("remove-driver") {
         let systemDrive = PathBuf::from(matches.value_of(SYSTEM_DRIVE).unwrap());
-        let driveName = matches.value_of(DRIVE_PATH).unwrap();
+        let driveName = matches.value_of(DRIVER_NAME);
+        let class = matches.value_of(DRIVE_CLASS);
 
-        let args: HashMap<String, FluentValue> = hash_map!("inf".to_string() => driveName.into());
-        writeConsole(ConsoleType::Info, &getLocaleText("driver-remove", Some(&args)));
-
-        return match command::remove_driver::remove_driver(&systemDrive, driveName) {
+        return match command::remove_driver::remove_driver(&systemDrive, driveName, class) {
             Ok(_) => {
                 writeConsole(ConsoleType::Success, &getLocaleText("driver-remove-success", None));
                 Ok(())
