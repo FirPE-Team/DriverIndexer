@@ -24,11 +24,10 @@ use crate::utils::sevenZIP::sevenZip;
 use crate::utils::util::getTmpName;
 use remove_dir_all::remove_dir_all;
 use rust_embed::Embed;
-use std::env;
 use std::env::temp_dir;
 use std::fs::create_dir_all;
 use std::path::PathBuf;
-
+use std::{env, process};
 // 设置静态资源
 
 // x64平台
@@ -58,14 +57,23 @@ fn main() {
     // 创建临时目录
     if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
         writeConsole(ConsoleType::Err, &getLocaleText("temp-create-failed", None));
-        std::process::exit(74);
+        process::exit(74);
     }
 
     // 检测到当前程序内嵌驱动包时则自动加载
-    if env::args().len() <= 1 && command::create_driver::selfDriver() {
-        remove_dir_all(&*TEMP_PATH).ok();
-        return;
-    };
+    if env::args().len() <= 1 {
+        match command::create_driver::selfDriver() {
+            Ok(true) => {
+                remove_dir_all(&*TEMP_PATH).ok();
+                process::exit(0);
+            }
+            Ok(false) => {}
+            Err(_e) => {
+                remove_dir_all(&*TEMP_PATH).ok();
+                process::exit(1);
+            }
+        }
+    }
 
     // 处理CLI
     let matches = cli::cli::cli();
@@ -77,5 +85,5 @@ fn main() {
     }
 
     // 退出程序
-    std::process::exit(if result.is_ok() { 0 } else { 1 });
+    process::exit(if result.is_ok() { 0 } else { 1 });
 }

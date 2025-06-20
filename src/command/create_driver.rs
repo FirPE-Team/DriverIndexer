@@ -52,21 +52,22 @@ pub fn createDriver(driverPath: &Path, outPath: &Path) -> Result<(), Box<dyn Err
 }
 
 /// 检测到当前程序内嵌驱动包时则自动加载
-pub fn selfDriver() -> bool {
-    let zip = sevenZip::new().unwrap();
-    if zip.isDriverPackage(&env::current_exe().unwrap()).unwrap_or(false) {
-        let mut index: Option<PathBuf> = None;
-        // 尝试解压索引文件
-        if zip.extractFiles(&env::current_exe().unwrap(), None, "*.index", &TEMP_PATH).unwrap_or(false) {
-            let indexList: Vec<PathBuf> = fs::read_dir(&*TEMP_PATH).unwrap().filter_map(|item| item.ok())
-                .filter(|item| item.path().extension().unwrap().to_str().unwrap().to_lowercase() == "index")
-                .map(|item| item.path()).collect();
-            if !indexList.is_empty() {
-                index = Option::from(indexList[0].clone());
-            }
-        };
-        command::load_driver::loadDriver(&env::current_exe().unwrap(), None, index, false, None, None);
-        return true;
+pub fn selfDriver() -> Result<bool, Box<dyn Error>> {
+    let zip = sevenZip::new()?;
+    if zip.isDriverPackage(&env::current_exe().unwrap())? == false {
+        return Ok(false);
+    }
+
+    let mut index: Option<PathBuf> = None;
+    // 尝试解压索引文件
+    if zip.extractFiles(&env::current_exe().unwrap(), None, "*.index", &TEMP_PATH).unwrap_or(false) {
+        let indexList: Vec<PathBuf> = fs::read_dir(&*TEMP_PATH).unwrap().filter_map(|item| item.ok())
+            .filter(|item| item.path().extension().unwrap().to_str().unwrap().to_lowercase() == "index")
+            .map(|item| item.path()).collect();
+        if !indexList.is_empty() {
+            index = Option::from(indexList[0].clone());
+        }
     };
-    false
+    command::load_driver::loadDriver(&env::current_exe().unwrap(), None, index, false, None, None)?;
+    Ok(true)
 }
