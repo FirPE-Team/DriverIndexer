@@ -54,6 +54,7 @@ remove-driver = 删除驱动。支持在线系统、离线系统
 
 ## classify-driver
 classify-driver = 整理驱动程序
+rename-driver = 重命名驱动父目录
 
 ## create-driver
 create-driver = 创建驱动包程序。打包程序与驱动包，便于分发

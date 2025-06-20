@@ -1,4 +1,4 @@
-use crate::cli::cli::{cli, ALL_DEVICE, DRIVER_NAME, DRIVE_CLASS, DRIVE_PATH, EJECTDRIVERCD, EXPORT_PATH, EXTRACT_PATH, INDEX_PATH, MATCH_DEVICE, PASSWORD, PROGRAM_PATH, SYSTEM_DRIVE};
+use crate::cli::cli::{cli, ALL_DEVICE, DRIVER_NAME, DRIVE_CLASS, DRIVE_PATH, EJECTDRIVERCD, EXPORT_PATH, EXTRACT_PATH, INDEX_PATH, MATCH_DEVICE, PASSWORD, PROGRAM_PATH, RENAME_DRIVER, SYSTEM_DRIVE};
 use crate::command;
 use crate::i18n::getLocaleText;
 use crate::utils::console::{writeConsole, ConsoleType};
@@ -222,14 +222,15 @@ pub fn matches(matches: ArgMatches<'_>) -> Result<(), Box<dyn Error>> {
     // 整理驱动
     if let Some(matches) = matches.subcommand_matches("classify-driver") {
         let inputPath = PathBuf::from(matches.value_of(DRIVE_PATH).unwrap());
+        let exportPath = PathBuf::from(matches.value_of(EXPORT_PATH).unwrap());
 
-        return match command::classify_driver::classify_driver(&inputPath) {
+        return match command::classify_driver::classify_driver(&inputPath, &exportPath, matches.is_present(RENAME_DRIVER)) {
             Ok(_) => {
                 writeConsole(ConsoleType::Success, &getLocaleText("Drivers-finishing-complete", None));
                 Ok(())
             }
             Err(e) => {
-                writeConsole(ConsoleType::Err, &e.to_string());
+                writeConsole(ConsoleType::Err, &getLocaleText("Drivers-finishing-failed", None));
                 Err(e)
             }
         };

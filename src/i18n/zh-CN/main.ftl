@@ -53,6 +53,7 @@ driver-remove-failed = 驱动删除失败
 
 # 整理驱动
 Drivers-finishing-complete = 驱动整理成功
+Drivers-finishing-failed = 驱动整理失败
 
 # 创建驱动包程序
 Driver-finishing-create = 驱动包程序创建成功

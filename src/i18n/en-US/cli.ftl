@@ -54,6 +54,7 @@ remove-driver = Remove drivers, supports online and offline systems
 
 ## classify-driver
 classify-driver = sort out the driver
+rename-driver = Rename the driver's parent directory
 
 ## create-driver
 create-driver = Create a driver package. Packages are packaged with programs and drivers for easy distribution

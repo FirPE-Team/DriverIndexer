@@ -52,6 +52,7 @@ driver-remove-failed = Driver remove successfully
 
 # classify-driver
 Drivers-finishing-complete = Drivers finishing complete
+Drivers-finishing-failed = Drivers finishing failed
 
 # create-driver
 Driver-finishing-create = Driver package program created successfully

@@ -15,6 +15,7 @@ pub const OFFLINE_IMPORT: &str = "OfflineImport";
 pub const EXTRACT_PATH: &str = "ExtractPath";
 pub const EXPORT_PATH: &str = "ExportPath";
 pub const DRIVER_NAME: &str = "DriverName";
+pub const RENAME_DRIVER: &str = "RenameDriver";
 pub const EJECTDRIVERCD: &str = "EjectDriverCD";
 pub const PROGRAM_PATH: &str = "ProgramPath";
 pub const SYSTEM_ROOT: &str = "SystemRoot";
@@ -276,12 +277,27 @@ pub fn cli<'a>() -> ArgMatches<'a> {
             SubCommand::with_name("classify-driver")
                 .about(&*getLocaleText("classify-driver", None))
                 .help_short("H")
+                // 参数-驱动位置
                 .arg(
                     Arg::with_name(DRIVE_PATH)
                         .value_name(DRIVE_PATH)
                         .validator(isValidDirectory)
                         .required(true)
                         .index(1),
+                )
+                // 参数-输出位置
+                .arg(
+                    Arg::with_name(EXPORT_PATH)
+                        .value_name(EXPORT_PATH)
+                        .required(true)
+                        .index(2),
+                )
+                // 选项-匹配所有设备（包括已安装驱动设备）
+                .arg(
+                    Arg::with_name(RENAME_DRIVER)
+                        .short("r")
+                        .long(RENAME_DRIVER)
+                        .help(&getLocaleText("rename_driver", None)),
                 ),
         )
         // 创建驱动程序包
