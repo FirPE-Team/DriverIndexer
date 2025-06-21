@@ -7,11 +7,11 @@ template =
 
  USAGE: {-opening-brace}usage{-closing-brace} [ARGUMENTS]
 
- OPTIONS:
-  {-opening-brace}options{-closing-brace}
-
  SUBCOMMANDS:
   {-opening-brace}subcommands{-closing-brace}
+
+ OPTIONS:
+  {-opening-brace}options{-closing-brace}
 
 help-message = Prints help information
 version-message = Prints version information

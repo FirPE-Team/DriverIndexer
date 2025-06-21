@@ -24,11 +24,11 @@ pub fn matches(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // 创建索引
     if let Some(matches) = matches.subcommand_matches("create-index") {
-        let driverPath = PathBuf::from(matches.value_of(DRIVE_PATH).unwrap());
-        let password = matches.value_of(PASSWORD);
+        let driverPath = PathBuf::from(matches.get_one::<String>(DRIVE_PATH).unwrap());
+        let password = matches.get_one(PASSWORD).map(String::as_str);
 
-        let indexPath = if matches.is_present(INDEX_PATH) {
-            PathBuf::from(matches.value_of(INDEX_PATH).unwrap())
+        let indexPath = if matches.contains_id(INDEX_PATH) {
+            PathBuf::from(matches.get_one::<String>(INDEX_PATH).unwrap())
         } else {
             // 没有指定索引文件，使用默认索引文件名: 驱动包名.index
             let indexName = format!("{}.index", driverPath.file_stem().unwrap().to_str().unwrap());
@@ -47,12 +47,12 @@ pub fn matches(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // 加载驱动
     if let Some(matches) = matches.subcommand_matches("load-driver") {
-        let drivePath = PathBuf::from(matches.value_of(DRIVE_PATH).unwrap());
-        let password = matches.value_of(PASSWORD);
-        let extractPath = matches.value_of(EXTRACT_PATH);
+        let drivePath = PathBuf::from(matches.get_one::<String>(DRIVE_PATH).unwrap());
+        let password = matches.get_one::<String>(PASSWORD).map(String::as_str);
+        let extractPath = matches.get_one::<String>(EXTRACT_PATH).map(String::as_str);
 
         // 弹出免驱设备虚拟光驱
-        if matches.is_present(EJECTDRIVERCD) {
+        if matches.contains_id(EJECTDRIVERCD) {
             for letter in b'C'..=b'Z' {
                 let drive = format!("{}:", letter as char);
                 let path = Path::new(&drive);
@@ -76,8 +76,8 @@ pub fn matches(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
 
             // 创建索引列表（无索引则使用None）
             let mut indexList: Vec<Option<PathBuf>> = Vec::new();
-            if matches.is_present(INDEX_PATH) {
-                let inedxPath = PathBuf::from(matches.value_of(INDEX_PATH).unwrap());
+            if matches.contains_id(INDEX_PATH) {
+                let inedxPath = PathBuf::from(matches.get_one::<String>(INDEX_PATH).unwrap());
                 let indexName = inedxPath.file_name().unwrap().to_str().unwrap();
                 if indexName.contains('*') || indexName.contains('?') {
                     for item in getFileList(&PathBuf::from(&inedxPath.parent().unwrap()), indexName)
@@ -86,7 +86,7 @@ pub fn matches(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
                         indexList.push(Some(item));
                     }
                 } else {
-                    indexList.push(Some(PathBuf::from(matches.value_of(INDEX_PATH).unwrap())));
+                    indexList.push(Some(PathBuf::from(matches.get_one::<String>(INDEX_PATH).unwrap())));
                 }
             } else {
                 indexList.append(
@@ -102,34 +102,34 @@ pub fn matches(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
             // 遍历驱动包
             for drivePathItem in driveList.iter() {
                 let index = indexIter.next().unwrap().clone();
-                let class = matches.value_of(DRIVE_CLASS).map(|class| class.to_string());
+                let class: Option<String> = matches.get_one::<String>(DRIVE_CLASS).cloned();
 
                 let args: HashMap<String, FluentValue> = hash_map!("path".to_string() => drivePathItem.to_str().unwrap().into());
                 writeConsole(ConsoleType::Info, &getLocaleText("load-driver-package", Some(&args)));
 
-                command::load_driver::loadDriver(drivePathItem, password, index, matches.is_present(ALL_DEVICE), class, extractPath)?;
+                command::load_driver::loadDriver(drivePathItem, password, index, matches.contains_id(ALL_DEVICE), class, extractPath)?;
             }
         } else {
             // 无通配符
-            let index = match matches.is_present(INDEX_PATH) {
-                true => Some(PathBuf::from(matches.value_of(INDEX_PATH).unwrap())),
+            let index = match matches.contains_id(INDEX_PATH) {
+                true => Some(PathBuf::from(matches.get_one::<String>(INDEX_PATH).unwrap())),
                 false => None,
             };
-            let class = matches.value_of(DRIVE_CLASS).map(|class| class.to_string());
+            let class = matches.get_one::<String>(DRIVE_CLASS).map(|class: &String| class.to_string());
 
             let args: HashMap<String, FluentValue> = hash_map!("path".to_string() => drivePath.to_str().unwrap().into());
             writeConsole(ConsoleType::Info, &getLocaleText("load-driver-package", Some(&args)));
 
-            command::load_driver::loadDriver(&drivePath, password, index, matches.is_present(ALL_DEVICE), class, extractPath)?;
+            command::load_driver::loadDriver(&drivePath, password, index, matches.contains_id(ALL_DEVICE), class, extractPath)?;
         }
     }
 
     // 加载离线驱动
     if let Some(matches) = matches.subcommand_matches("load-offline-driver") {
-        let systemDrive = matches.value_of(SYSTEM_DRIVE).map(Path::new);
-        let class = matches.value_of(DRIVE_CLASS).map(|class| class.to_string());
+        let systemDrive = matches.get_one::<String>(SYSTEM_DRIVE).map(Path::new);
+        let class = matches.get_one::<String>(DRIVE_CLASS).cloned();
 
-        return match command::load_offline_driver::load_offline_driver(systemDrive, matches.is_present(ALL_DEVICE), class) {
+        return match command::load_offline_driver::load_offline_driver(systemDrive, matches.contains_id(ALL_DEVICE), class) {
             Ok(_) => {
                 Ok(())
             }
@@ -142,9 +142,9 @@ pub fn matches(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // 导入驱动
     if let Some(matches) = matches.subcommand_matches("import-driver") {
-        let systemDrive = PathBuf::from(matches.value_of(SYSTEM_DRIVE).unwrap());
-        let drivePath = PathBuf::from(matches.value_of(DRIVE_PATH).unwrap());
-        let password = matches.value_of(PASSWORD);
+        let systemDrive = PathBuf::from(matches.get_one::<String>(SYSTEM_DRIVE).unwrap());
+        let drivePath = PathBuf::from(matches.get_one::<String>(DRIVE_PATH).unwrap());
+        let password = matches.get_one::<&str>(PASSWORD).cloned();
 
         // 处理通配符
         let driveName = drivePath.file_name().unwrap().to_str().unwrap();
@@ -158,7 +158,7 @@ pub fn matches(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
                 let args: HashMap<String, FluentValue> = hash_map!("path".to_string() => item.to_str().unwrap().into());
                 writeConsole(ConsoleType::Info, &getLocaleText("load-driver-package", Some(&args)));
 
-                match command::import_driver::import_driver(&systemDrive, &item, password, matches.is_present(MATCH_DEVICE)) {
+                match command::import_driver::import_driver(&systemDrive, &item, password, matches.contains_id(MATCH_DEVICE)) {
                     Ok(_) => {}
                     Err(e) => {
                         writeConsole(ConsoleType::Err, &e.to_string());
@@ -170,7 +170,7 @@ pub fn matches(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
             let args: HashMap<String, FluentValue> = hash_map!("path".to_string() => drivePath.to_str().unwrap().into());
             writeConsole(ConsoleType::Info, &getLocaleText("load-driver-package", Some(&args)));
 
-            return match command::import_driver::import_driver(&systemDrive, &drivePath, password, matches.is_present(MATCH_DEVICE)) {
+            return match command::import_driver::import_driver(&systemDrive, &drivePath, password, matches.contains_id(MATCH_DEVICE)) {
                 Ok(_) => {
                     Ok(())
                 }
@@ -184,10 +184,10 @@ pub fn matches(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // 导出驱动
     if let Some(matches) = matches.subcommand_matches("export-driver") {
-        let systemDrive = PathBuf::from(matches.value_of(SYSTEM_DRIVE).unwrap());
-        let exportPath = PathBuf::from(matches.value_of(EXPORT_PATH).unwrap());
-        let name = matches.value_of(DRIVER_NAME);
-        let class = matches.value_of(DRIVE_CLASS);
+        let systemDrive = PathBuf::from(matches.get_one::<String>(SYSTEM_DRIVE).unwrap());
+        let exportPath = PathBuf::from(matches.get_one::<String>(EXPORT_PATH).unwrap());
+        let name = matches.get_one(DRIVER_NAME).cloned();
+        let class = matches.get_one(DRIVE_CLASS).cloned();
 
         return match command::export_driver::export_driver(&systemDrive, &exportPath, name, class) {
             Ok(_) => {
@@ -203,9 +203,9 @@ pub fn matches(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // 删除驱动
     if let Some(matches) = matches.subcommand_matches("remove-driver") {
-        let systemDrive = PathBuf::from(matches.value_of(SYSTEM_DRIVE).unwrap());
-        let driveName = matches.value_of(DRIVER_NAME);
-        let class = matches.value_of(DRIVE_CLASS);
+        let systemDrive = PathBuf::from(matches.get_one::<String>(SYSTEM_DRIVE).unwrap());
+        let driveName = matches.get_one(DRIVER_NAME).cloned();
+        let class = matches.get_one(DRIVE_CLASS).cloned();
 
         return match command::remove_driver::remove_driver(&systemDrive, driveName, class) {
             Ok(_) => {
@@ -221,10 +221,10 @@ pub fn matches(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // 整理驱动
     if let Some(matches) = matches.subcommand_matches("classify-driver") {
-        let inputPath = PathBuf::from(matches.value_of(DRIVE_PATH).unwrap());
-        let exportPath = PathBuf::from(matches.value_of(EXPORT_PATH).unwrap());
+        let inputPath = PathBuf::from(matches.get_one::<String>(DRIVE_PATH).unwrap());
+        let exportPath = PathBuf::from(matches.get_one::<String>(EXPORT_PATH).unwrap());
 
-        return match command::classify_driver::classify_driver(&inputPath, &exportPath, matches.is_present(RENAME_DRIVER)) {
+        return match command::classify_driver::classify_driver(&inputPath, &exportPath, matches.contains_id(RENAME_DRIVER)) {
             Ok(_) => {
                 writeConsole(ConsoleType::Success, &getLocaleText("Drivers-finishing-complete", None));
                 Ok(())
@@ -238,8 +238,8 @@ pub fn matches(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
 
     // 创建驱动包程序
     if let Some(matches) = matches.subcommand_matches("create-driver") {
-        let inputPath = PathBuf::from(matches.value_of(DRIVE_PATH).unwrap());
-        let outputPath = PathBuf::from(matches.value_of(PROGRAM_PATH).unwrap());
+        let inputPath = PathBuf::from(matches.get_one::<String>(DRIVE_PATH).unwrap());
+        let outputPath = PathBuf::from(matches.get_one::<String>(PROGRAM_PATH).unwrap());
 
         writeConsole(ConsoleType::Info, &getLocaleText("processing", None));
         return match command::create_driver::createDriver(&inputPath, &outputPath) {
@@ -281,5 +281,5 @@ pub fn isDebug() -> bool {
     if env::args().skip(1).count() == 0 {
         return false;
     }
-    cli().is_present("debug")
+    cli().contains_id("debug")
 }

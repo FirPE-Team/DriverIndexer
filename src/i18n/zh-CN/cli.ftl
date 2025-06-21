@@ -7,11 +7,11 @@ template =
 
  用法: {-opening-brace}bin{-closing-brace}.exe [选项] [命令] [参数]
 
- 选项:
-  {-opening-brace}options{-closing-brace}
-
  命令:
   {-opening-brace}subcommands{-closing-brace}
+
+ 选项:
+  {-opening-brace}options{-closing-brace}
 
 help-message = 打印帮助信息
 version-message = 打印版本信息
