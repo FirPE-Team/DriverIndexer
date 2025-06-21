@@ -12,7 +12,7 @@ use std::env;
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
-pub fn matches(matches: ArgMatches<'_>) -> Result<(), Box<dyn Error>> {
+pub fn matches(matches: ArgMatches) -> Result<(), Box<dyn Error>> {
     if isDebug() {
         let arg: HashMap<String, FluentValue> =
             hash_map!("path".to_string() => LOG_PATH.to_str().unwrap().into());

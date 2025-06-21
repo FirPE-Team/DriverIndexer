@@ -2,7 +2,7 @@ use crate::i18n::getLocaleText;
 use std::path::{Path, PathBuf};
 
 /// 是否为有效的路径
-pub fn isValidPath(path: String) -> Result<(), String> {
+pub fn isValidPath(path: &str) -> Result<(), String> {
     if !PathBuf::from(path).exists() {
         return Err(getLocaleText("path-not-exist", None));
     };
@@ -10,7 +10,7 @@ pub fn isValidPath(path: String) -> Result<(), String> {
 }
 
 /// 是否为有效的目录路径
-pub fn isValidDirectory(directory: String) -> Result<(), String> {
+pub fn isValidDirectory(directory: &str) -> Result<(), String> {
     let path = PathBuf::from(directory);
     if !path.exists() {
         return Err(getLocaleText("dir-not-exist", None));
@@ -22,7 +22,7 @@ pub fn isValidDirectory(directory: String) -> Result<(), String> {
 }
 
 /// 是否为系统路径
-pub fn isValidSystemPath(systemPath: String) -> Result<(), String> {
+pub fn isValidSystemPath(systemPath: &str) -> Result<(), String> {
     let path = Path::new(&systemPath);
     if !path.exists() {
         return Err(getLocaleText("path-not-exist", None));
@@ -34,7 +34,7 @@ pub fn isValidSystemPath(systemPath: String) -> Result<(), String> {
 }
 
 /// 是否为有效的路径（包括通配符）
-pub fn isValidPathIncludeWildcard(path: String) -> Result<(), String> {
+pub fn isValidPathIncludeWildcard(path: &str) -> Result<(), String> {
     let path = PathBuf::from(path);
 
     let fileName = path.file_name().unwrap().to_str().unwrap();
@@ -52,7 +52,7 @@ pub fn isValidPathIncludeWildcard(path: String) -> Result<(), String> {
 }
 
 /// 是否为有效的驱动类别
-pub fn isValidDriverClass(class: String) -> Result<(), String> {
+pub fn isValidDriverClass(class: &str) -> Result<(), String> {
     // HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Class\{f8ecafa6-66d1-41a5-899b-66585d7216b7}
     let driverClass = [
         "XboxComposite",

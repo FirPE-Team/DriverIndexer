@@ -8,7 +8,7 @@ template =
  用法: {-opening-brace}bin{-closing-brace}.exe [选项] [命令] [参数]
 
  选项:
-  {-opening-brace}unified{-closing-brace}
+  {-opening-brace}options{-closing-brace}
 
  命令:
   {-opening-brace}subcommands{-closing-brace}

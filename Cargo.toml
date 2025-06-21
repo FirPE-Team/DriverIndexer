@@ -18,7 +18,7 @@ thunk-rs = "0.3.2"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
 vc-ltl = "5.1.1"
-clap = "~2.33"
+clap = "3.2.25"
 glob = "0.3.1"
 chardet = "0.2.4"
 encoding = "0.2"

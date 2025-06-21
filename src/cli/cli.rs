@@ -1,4 +1,4 @@
-use clap::{crate_version, App, AppSettings, Arg, ArgMatches, SubCommand};
+use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 
 use crate::cli::validator::{isValidDirectory, isValidDriverClass, isValidPath, isValidPathIncludeWildcard, isValidSystemPath};
 use crate::i18n::getLocaleText;
@@ -20,13 +20,13 @@ pub const EJECTDRIVERCD: &str = "EjectDriverCD";
 pub const PROGRAM_PATH: &str = "ProgramPath";
 pub const SYSTEM_ROOT: &str = "SystemRoot";
 
-pub fn cli<'a>() -> ArgMatches<'a> {
-    App::new(crate_name!())
+pub fn cli() -> ArgMatches {
+    App::new(env!("CARGO_PKG_NAME"))
         // 基本配置
         .setting(AppSettings::ArgRequiredElseHelp)
-        .setting(AppSettings::VersionlessSubcommands)
+        .propagate_version(false)
         .global_setting(AppSettings::UnifiedHelpMessage)
-        .version(crate_version!())
+        .version(env!("CARGO_PKG_VERSION"))
         // 模板
         .template(&*getLocaleText("template", None))
         .help_message(&*Box::leak(
@@ -35,24 +35,24 @@ pub fn cli<'a>() -> ArgMatches<'a> {
         .version_message(&*Box::leak(
             getLocaleText("version-message", None).into_boxed_str(),
         ))
-        .help_short("H")
+        .help_short('H')
         .subcommand(SubCommand::with_name(HELP)
-            .help_short("H")
+            .help_short('H')
             .about(&*getLocaleText("help", None))
         )
 
         // Debug 模式
         .arg(
             Arg::with_name("debug")
-                .short("D")
+                .short('D')
                 .long("debug")
-                .help(&getLocaleText("on-debug", None)),
+                .help(&*getLocaleText("on-debug", None)),
         )
         // 创建索引
         .subcommand(
             SubCommand::with_name("create-index")
                 .about(&*getLocaleText("create-index", None))
-                .help_short("H")
+                .help_short('H')
                 .arg(
                     Arg::with_name(DRIVE_PATH)
                         .value_name(DRIVE_PATH)
@@ -64,22 +64,22 @@ pub fn cli<'a>() -> ArgMatches<'a> {
                     Arg::with_name(INDEX_PATH)
                         .value_name(INDEX_PATH)
                         .index(2)
-                        .help(&getLocaleText("save-index-path", None)),
+                        .help(&*getLocaleText("save-index-path", None)),
                 )
                 // 选项-指定压缩包密码
                 .arg(
                     Arg::with_name(PASSWORD)
-                        .short("p")
+                        .short('p')
                         .long(PASSWORD)
                         .value_name(PASSWORD)
-                        .help(&getLocaleText("package-password", None)),
+                        .help(&*getLocaleText("package-password", None)),
                 ),
         )
         // 加载驱动
         .subcommand(
             SubCommand::with_name("load-driver")
                 .about(&*getLocaleText("load-driver", None))
-                .help_short("H")
+                .help_short('H')
                 // 参数-驱动
                 .arg(
                     Arg::with_name(DRIVE_PATH)
@@ -87,64 +87,64 @@ pub fn cli<'a>() -> ArgMatches<'a> {
                         .validator(isValidPathIncludeWildcard)
                         .required(true)
                         .index(1)
-                        .help(&getLocaleText("package-path", None)),
+                        .help(&*getLocaleText("package-path", None)),
                 )
                 // 参数-索引文件
                 .arg(
                     Arg::with_name(INDEX_PATH)
                         .value_name(INDEX_PATH)
                         .index(2)
-                        .help(&getLocaleText("index-path", None)),
+                        .help(&*getLocaleText("index-path", None)),
                 )
                 // 选项-指定压缩包密码
                 .arg(
                     Arg::with_name(PASSWORD)
-                        .short("p")
+                        .short('p')
                         .long(PASSWORD)
                         .value_name(PASSWORD)
-                        .help(&getLocaleText("package-password", None)),
+                        .help(&*getLocaleText("package-password", None)),
                 )
                 // 选项-匹配所有设备（包括已安装驱动设备）
                 .arg(
                     Arg::with_name(ALL_DEVICE)
-                        .short("a")
+                        .short('a')
                         .long(ALL_DEVICE)
-                        .help(&getLocaleText("match-all-device", None)),
+                        .help(&*getLocaleText("match-all-device", None)),
                 )
                 // 选项-驱动类别
                 .arg(
                     Arg::with_name(DRIVE_CLASS)
-                        .short("c")
+                        .short('c')
                         .long(DRIVE_CLASS)
                         .value_name(DRIVE_CLASS)
                         .validator(isValidDriverClass)
-                        .help(&getLocaleText("driver-category", None)),
+                        .help(&*getLocaleText("driver-category", None)),
                 )
                 // 选项-仅解压不安装
                 .arg(
                     Arg::with_name(EXTRACT_PATH)
-                        .short("e")
+                        .short('e')
                         .long(EXTRACT_PATH)
                         .value_name(EXTRACT_PATH)
-                        .help(&getLocaleText("only-unzip", None)),
+                        .help(&*getLocaleText("only-unzip", None)),
                 )
                 // 选项-弹出免驱设备
                 .arg(
                     Arg::with_name(EJECTDRIVERCD)
-                        .short("j")
+                        .short('j')
                         .long(EJECTDRIVERCD)
-                        .help(&getLocaleText("eject-driver-cd", None)),
+                        .help(&*getLocaleText("eject-driver-cd", None)),
                 )
         )
         // 加载离线驱动
         .subcommand(
             SubCommand::with_name("load-offline-driver")
                 .about(&*getLocaleText("load-offline-driver", None))
-                .help_short("H")
+                .help_short('H')
                 // 选项-系统盘
                 .arg(
                     Arg::with_name(SYSTEM_DRIVE)
-                        .short("s")
+                        .short('s')
                         .long(SYSTEM_DRIVE)
                         .value_name(SYSTEM_DRIVE)
                         .validator(isValidSystemPath)
@@ -152,25 +152,25 @@ pub fn cli<'a>() -> ArgMatches<'a> {
                 // 选项-匹配所有设备（包括已安装驱动设备）
                 .arg(
                     Arg::with_name(ALL_DEVICE)
-                        .short("a")
+                        .short('a')
                         .long(ALL_DEVICE)
-                        .help(&getLocaleText("match-all-device", None)),
+                        .help(&*getLocaleText("match-all-device", None)),
                 )
                 // 选项-驱动类别
                 .arg(
                     Arg::with_name(DRIVE_CLASS)
-                        .short("c")
+                        .short('c')
                         .long(DRIVE_CLASS)
                         .value_name(DRIVE_CLASS)
                         .validator(isValidDriverClass)
-                        .help(&getLocaleText("driver-category", None)),
+                        .help(&*getLocaleText("driver-category", None)),
                 )
         )
         // 导入驱动
         .subcommand(
             SubCommand::with_name("import-driver")
                 .about(&*getLocaleText("import-driver", None))
-                .help_short("H")
+                .help_short('H')
                 // 参数-系统盘
                 .arg(
                     Arg::with_name(SYSTEM_DRIVE)
@@ -186,29 +186,29 @@ pub fn cli<'a>() -> ArgMatches<'a> {
                         .validator(isValidPathIncludeWildcard)
                         .required(true)
                         .index(2)
-                        .help(&getLocaleText("package-path", None)),
+                        .help(&*getLocaleText("package-path", None)),
                 )
                 // 选项-指定压缩包密码
                 .arg(
                     Arg::with_name(PASSWORD)
-                        .short("p")
+                        .short('p')
                         .long(PASSWORD)
                         .value_name(PASSWORD)
-                        .help(&getLocaleText("package-password", None)),
+                        .help(&*getLocaleText("package-password", None)),
                 )
                 // 选项-匹配所有设备（包括已安装驱动设备）
                 .arg(
                     Arg::with_name(MATCH_DEVICE)
-                        .short("m")
+                        .short('m')
                         .long(MATCH_DEVICE)
-                        .help(&getLocaleText("match-device", None)),
+                        .help(&*getLocaleText("match-device", None)),
                 )
         )
         // 导出驱动
         .subcommand(
             SubCommand::with_name("export-driver")
                 .about(&*getLocaleText("export-driver", None))
-                .help_short("H")
+                .help_short('H')
                 // 参数-系统盘
                 .arg(
                     Arg::with_name(SYSTEM_DRIVE)
@@ -227,26 +227,26 @@ pub fn cli<'a>() -> ArgMatches<'a> {
                 // 选项-驱动类别
                 .arg(
                     Arg::with_name(DRIVE_CLASS)
-                        .short("c")
+                        .short('c')
                         .long(DRIVE_CLASS)
                         .value_name(DRIVE_CLASS)
                         .validator(isValidDriverClass)
-                        .help(&getLocaleText("driver-category", None)),
+                        .help(&*getLocaleText("driver-category", None)),
                 )
                 // 选项-驱动名称
                 .arg(
                     Arg::with_name(DRIVER_NAME)
-                        .short("n")
+                        .short('n')
                         .long(DRIVER_NAME)
                         .value_name(DRIVER_NAME)
-                        .help(&getLocaleText("driver-name", None)),
+                        .help(&*getLocaleText("driver-name", None)),
                 )
         )
         // 删除驱动
         .subcommand(
             SubCommand::with_name("remove-driver")
                 .about(&*getLocaleText("remove-driver", None))
-                .help_short("H")
+                .help_short('H')
                 // 参数-系统盘
                 .arg(
                     Arg::with_name(SYSTEM_DRIVE)
@@ -260,23 +260,23 @@ pub fn cli<'a>() -> ArgMatches<'a> {
                     Arg::with_name(DRIVER_NAME)
                         .value_name(DRIVER_NAME)
                         .index(2)
-                        .help(&getLocaleText("driver-name", None)),
+                        .help(&*getLocaleText("driver-name", None)),
                 )
                 // 选项-驱动类别
                 .arg(
                     Arg::with_name(DRIVE_CLASS)
-                        .short("c")
+                        .short('c')
                         .long(DRIVE_CLASS)
                         .value_name(DRIVE_CLASS)
                         .validator(isValidDriverClass)
-                        .help(&getLocaleText("driver-category", None)),
+                        .help(&*getLocaleText("driver-category", None)),
                 )
         )
         // 整理驱动
         .subcommand(
             SubCommand::with_name("classify-driver")
                 .about(&*getLocaleText("classify-driver", None))
-                .help_short("H")
+                .help_short('H')
                 // 参数-驱动位置
                 .arg(
                     Arg::with_name(DRIVE_PATH)
@@ -295,37 +295,37 @@ pub fn cli<'a>() -> ArgMatches<'a> {
                 // 选项-匹配所有设备（包括已安装驱动设备）
                 .arg(
                     Arg::with_name(RENAME_DRIVER)
-                        .short("r")
+                        .short('r')
                         .long(RENAME_DRIVER)
-                        .help(&getLocaleText("rename_driver", None)),
+                        .help(&*getLocaleText("rename_driver", None)),
                 ),
         )
         // 创建驱动程序包
         .subcommand(
             SubCommand::with_name("create-driver")
                 .about(&*getLocaleText("create-driver", None))
-                .help_short("H")
+                .help_short('H')
                 .arg(
                     Arg::with_name(DRIVE_PATH)
                         .value_name(DRIVE_PATH)
                         .validator(isValidPath)
                         .required(true)
                         .index(1)
-                        .help(&getLocaleText("package-path", None)),
+                        .help(&*getLocaleText("package-path", None)),
                 )
                 .arg(
                     Arg::with_name(PROGRAM_PATH)
                         .value_name(PROGRAM_PATH)
                         .required(true)
                         .index(2)
-                        .help(&getLocaleText("driver-package-program-path", None)),
+                        .help(&*getLocaleText("driver-package-program-path", None)),
                 )
         )
         // 扫描设备硬件更改
         .subcommand(
             SubCommand::with_name("scan-devices")
                 .about(&*getLocaleText("scan-devices", None))
-                .help_short("H")
+                .help_short('H')
         )
         .get_matches()
 }

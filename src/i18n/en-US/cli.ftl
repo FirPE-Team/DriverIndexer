@@ -8,7 +8,7 @@ template =
  USAGE: {-opening-brace}usage{-closing-brace} [ARGUMENTS]
 
  OPTIONS:
-  {-opening-brace}unified{-closing-brace}
+  {-opening-brace}options{-closing-brace}
 
  SUBCOMMANDS:
   {-opening-brace}subcommands{-closing-brace}
