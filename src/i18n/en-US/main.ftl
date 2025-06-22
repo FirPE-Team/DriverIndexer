@@ -18,6 +18,7 @@ saveInfo = The drive index is saved in { $path }
 # load-driver
 load-driver-package = Load driver package: { $path }
 no-device = Failed to obtain hardware information
+load-index = load index: {$path}
 unzip-index-failed = Failed to unzip the index file, please confirm whether the index file exists in the compressed package
 index-parsing-failed = Index file parsing failed, Please regenerate the index file
 no-driver-package = No driver detected in the driver package

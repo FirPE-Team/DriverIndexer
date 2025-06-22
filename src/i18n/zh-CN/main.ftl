@@ -18,6 +18,7 @@ saveInfo = 驱动索引保存在 { $path }
 # 加载驱动
 load-driver-package = 加载驱动包: { $path }
 no-device = 获取硬件信息失败
+load-index = 加载索引: {$path}
 unzip-index-failed = 无法解压索引文件，请确认压缩包中是否存在索引文件
 index-parsing-failed = 索引文件解析失败，请重新生成索引文件
 no-driver-package = 在驱动程序包中未检测到驱动程序
