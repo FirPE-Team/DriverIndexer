@@ -5,8 +5,6 @@
 #![allow(dead_code)]
 
 #[macro_use]
-extern crate clap; // 设置静态变量
-#[macro_use]
 extern crate lazy_static;
 #[macro_use]
 mod macros;
@@ -64,12 +62,20 @@ fn main() {
     if env::args().len() <= 1 {
         match command::create_driver::selfDriver() {
             Ok(true) => {
-                remove_dir_all(&*TEMP_PATH).ok();
+                if TEMP_PATH.exists() && remove_dir_all(&*TEMP_PATH).is_err() {
+                    writeConsole(ConsoleType::Warning, &getLocaleText("temp-remove-failed", None));
+                }
                 process::exit(0);
             }
-            Ok(false) => {}
+            Ok(false) => {
+                if TEMP_PATH.exists() {
+                    remove_dir_all(&*TEMP_PATH).ok();
+                }
+            }
             Err(_e) => {
-                remove_dir_all(&*TEMP_PATH).ok();
+                if TEMP_PATH.exists() && remove_dir_all(&*TEMP_PATH).is_err() {
+                    writeConsole(ConsoleType::Warning, &getLocaleText("temp-remove-failed", None));
+                }
                 process::exit(1);
             }
         }
@@ -81,7 +87,7 @@ fn main() {
 
     // 清除临时目录
     if TEMP_PATH.exists() && remove_dir_all(&*TEMP_PATH).is_err() {
-        writeConsole(ConsoleType::Err, &getLocaleText("temp-remove-failed", None));
+        writeConsole(ConsoleType::Warning, &getLocaleText("temp-remove-failed", None));
     }
 
     // 退出程序
