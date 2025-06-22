@@ -2,7 +2,7 @@
 name = "DriverIndexer"
 version = "1.1.0"
 authors = ["Fir"]
-edition = "2018"
+edition = "2021"
 build = "build.rs"
 
 [profile.release]
@@ -36,6 +36,8 @@ widestring = "1.0.0-beta.1"
 fastrand = "2.1.1"
 goblin = "0.9.3"
 walkdir = "2.5.0"
+threadpool = "1.8.1"
+num_cpus = "1.17.0"
 
 [dependencies.windows]
 version = "0.59.0"
