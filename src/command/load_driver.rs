@@ -32,56 +32,105 @@ pub fn loadDriver(
     let zip = sevenZip::new()?;
     let devcon = Devcon::new()?;
 
-    let infInfoList;
-
     // 当前临时驱动解压路径
-    let driversPath;
-
-    if let Some(indexPath) = indexPath {
-        // ==========索引法==========
-        driversPath = TEMP_PATH.join(driverPackPath.file_stem().unwrap());
-        let indexPath = if indexPath.is_relative() {
-            // 判断索引文件是否为相对路径
-            let relativeIndexPath = driverPackPath.parent().unwrap().join(&indexPath);
-            if relativeIndexPath.exists() { relativeIndexPath } else {
-                // 尝试解压索引文件
-                if !zip.extractFiles(driverPackPath, password, indexPath.to_str().unwrap(), &driversPath).unwrap() {
-                    writeConsole(ConsoleType::Err, &getLocaleText("unzip-index-failed", None));
-                    return Err(getLocaleText("unzip-index-failed", None).into());
-                };
-                driversPath.join(&indexPath)
-            }
-        } else { indexPath };
-        // 解析索引文件
-        infInfoList = match InfInfo::parsingIndex(&indexPath) {
-            Ok(infInfoList) => infInfoList,
-            Err(_) => {
-                writeConsole(ConsoleType::Err, &getLocaleText("index-parsing-failed", None));
-                return Err(getLocaleText("index-parsing-failed", None).into());
-            }
-        };
+    let driversPath = if driverPackPath.is_dir() {
+        driverPackPath.to_path_buf()
     } else {
-        // ==========无索引法==========
-        if driverPackPath.is_file() {
-            driversPath = TEMP_PATH.join(driverPackPath.file_stem().unwrap());
-            // 解压INF文件
-            if !zip.extractFilesFromPath(driverPackPath, password, "*.inf", &driversPath).unwrap() {
+        TEMP_PATH.join(driverPackPath.file_stem().unwrap())
+    };
+
+    let infInfoList = {
+        // 指定索引文件
+        if let Some(idx) = indexPath {
+            // 根据相对/绝对路径定位
+            let index = if idx.is_relative() {
+                let relativeIndex = driverPackPath.parent().unwrap().join(&idx);
+                if relativeIndex.exists() { relativeIndex } else { idx.to_path_buf() }
+            } else {
+                idx.to_path_buf()
+            };
+
+            let args: HashMap<String, FluentValue> = hash_map!("path".to_string() => index.to_str().unwrap().into());
+            writeConsole(ConsoleType::Info, &getLocaleText("load-index", Some(&args)));
+            InfInfo::parsingIndex(&index).unwrap_or_else(|_| {
+                writeConsole(ConsoleType::Warning, &getLocaleText("index-parsing-failed", None));
+                Vec::new()
+            })
+        } else {
+            Vec::new()
+        }
+    };
+
+    // 自动检测同目录下的索引文件
+    let infInfoList = if !infInfoList.is_empty() {
+        infInfoList
+    } else {
+        let same_index = driverPackPath
+            .parent()
+            .unwrap()
+            .join(format!("{}.index", driverPackPath.file_stem().unwrap().to_string_lossy()));
+        if same_index.exists() {
+            let args: HashMap<String, FluentValue> = hash_map!("path".to_string() => same_index.to_str().unwrap().into());
+            writeConsole(ConsoleType::Info, &getLocaleText("load-index", Some(&args)));
+            InfInfo::parsingIndex(&same_index).unwrap_or_else(|_| {
+                writeConsole(ConsoleType::Warning, &getLocaleText("index-parsing-failed", None));
+                Vec::new()
+            })
+        } else {
+            Vec::new()
+        }
+    };
+
+
+    // 自动检测压缩包内索引文件
+    let infInfoList = if infInfoList.is_empty() && driverPackPath.is_file() {
+        // 解压所有索引文件到临时目录
+        if zip.extractFilesFromPath(driverPackPath, password, "*.index", &driversPath)? == true {
+            // 目前假设只有一个 index 文件，直接 glob 查找
+            if let Some(found) = glob::glob(&format!("{}/**/*.index", driversPath.display()))?
+                .filter_map(Result::ok)
+                .next() {
+                let args: HashMap<String, FluentValue> = hash_map!("path".to_string() => found.file_name().unwrap().to_str().unwrap().into());
+                writeConsole(ConsoleType::Info, &getLocaleText("load-index", Some(&args)));
+                InfInfo::parsingIndex(&found).unwrap_or_else(|_| {
+                    writeConsole(ConsoleType::Warning, &getLocaleText("index-parsing-failed", None));
+                    Vec::new()
+                })
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+
+    // 即时建立索引
+    let infInfoList = if !infInfoList.is_empty() {
+        infInfoList
+    } else {
+        let driversPath = if driverPackPath.is_file() {
+            // 解压所有 INF 文件
+            if !zip.extractFilesFromPath(driverPackPath, password, "*.inf", &driversPath)? {
                 writeConsole(ConsoleType::Err, &getLocaleText("driver-unzip-failed", None));
                 return Err(getLocaleText("driver-unzip-failed", None).into());
-            };
+            }
+            &driversPath
         } else {
-            // 驱动包为文件夹
-            driversPath = PathBuf::from(driverPackPath);
-        }
+            driverPackPath
+        };
+
+        // 列出INF文件
         let infList = getFileList(&driversPath, "*.inf")?;
         if infList.is_empty() {
             writeConsole(ConsoleType::Err, &getLocaleText("no-driver-package", None));
             return Err(getLocaleText("no-driver-package", None).into());
         }
+
         // 多线程解析INF文件
-        infInfoList = InfInfo::parsingInfFileList(&driversPath, &infList);
-        // infInfoList: Vec<InfInfo> = infList.iter().map(|item| InfInfo::parsingInfFile(&basePath, item).unwrap()).collect();
-    }
+        InfInfo::parsingInfFileList(&driversPath, &infList)
+    };
 
     let mut totalList: Vec<HwID> = Vec::new();
 
@@ -146,6 +195,7 @@ pub fn loadDriver(
             let hardware = hardware.clone();
             let infInfo = infInfo.clone();
 
+            // 为每个设备分配一个线程
             let task = thread::spawn(move || {
                 match loadDriverPackage(&driverPackPath, password, &driversPath, &hardware, &infInfo, onlyExtract) {
                     Ok(message) => writeConsole(ConsoleType::Success, &message),
