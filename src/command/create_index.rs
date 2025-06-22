@@ -10,11 +10,12 @@ use fluent_templates::fluent_bundle::FluentValue;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
+use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
-use std::{fs, thread};
+use std::sync::{mpsc, Arc};
+use threadpool::ThreadPool;
 
 /// INF驱动信息
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -152,22 +153,33 @@ impl InfInfo {
     /// 1. inf 基本路径（父路径）
     /// 2. inf 文件路径列表
     pub fn parsingInfFileList(basePath: &Path, infFileList: &[PathBuf]) -> Vec<InfInfo> {
+        // 创建线程池（池大小以可用 CPU 核心数为准）
+        let pool = ThreadPool::new(num_cpus::get());
+
+        // 通道，用于收集每个线程的 InfInfo
         let (tx, rx) = mpsc::channel();
-        for item in infFileList.iter() {
-            let basePath = basePath.to_path_buf();
-            let infFile = item.clone();
-            let tx1 = mpsc::Sender::clone(&tx);
-            thread::spawn(move || {
-                if let Ok(infInfo) = InfInfo::parsingInfFile(&basePath, &infFile) {
-                    tx1.send(infInfo).unwrap();
+
+        // Arc 包裹 base_path，让多个线程共享同一个 PathBuf 引用
+        let base_path = Arc::new(basePath.to_path_buf());
+
+        // 遍历INF文件
+        for inf_file in infFileList.iter().cloned() {
+            let tx = tx.clone();
+            let base_path = Arc::clone(&base_path);
+
+            pool.execute(move || {
+                if let Ok(inf_info) = InfInfo::parsingInfFile(&base_path, &inf_file) {
+                    // 发送到主线程
+                    let _ = tx.send(inf_info);
                 }
             });
         }
-        // 释放接受者，否则会卡住造成死锁
+
+        // 所有发送者克隆已创建完毕，关闭原始发送端以便结束迭代
         drop(tx);
-        // 接收数据并转为INF信息数组
-        let infInfoList = rx.iter().collect::<Vec<InfInfo>>();
-        infInfoList
+
+        // 主线程收集所有结果
+        rx.into_iter().collect()
     }
 
     /// 保存INF数据（通过JSON）

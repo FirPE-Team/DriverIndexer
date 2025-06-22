@@ -9,9 +9,11 @@ use crate::TEMP_PATH;
 use fluent_templates::fluent_bundle::FluentValue;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::env;
 use std::error::Error;
 use std::path::{Path, PathBuf};
-use std::{env, thread};
+use std::sync::mpsc::channel;
+use threadpool::ThreadPool;
 
 /// 加载驱动包。支持驱动包路径、驱动路径
 /// # 参数
@@ -179,10 +181,11 @@ pub fn loadDriver(
         }
 
         // 任务列表
-        let mut taskList = Vec::new();
+        let pool = ThreadPool::new(num_cpus::get());
+        let (tx, rx) = channel();
 
         // 循环匹配信息
-        for (hardware, infInfo) in matchHardwareAndDriver.iter() {
+        for (hardware, infInfo) in matchHardwareAndDriver {
             // 当前状态：一个设备中有一个或多个驱动
             let driverPackPath = driverPackPath.to_path_buf();
             let password = password.map(|password| password.to_string());
@@ -196,26 +199,35 @@ pub fn loadDriver(
             let infInfo = infInfo.clone();
 
             // 为每个设备分配一个线程
-            let task = thread::spawn(move || {
-                match loadDriverPackage(&driverPackPath, password, &driversPath, &hardware, &infInfo, onlyExtract) {
-                    Ok(message) => writeConsole(ConsoleType::Success, &message),
-                    Err(error) => writeConsole(ConsoleType::Err, &error)
-                };
+            let tx = tx.clone();
+
+            pool.execute(move || {
+                let result = installDriver(
+                    &driverPackPath,
+                    password.clone(),
+                    &driversPath,
+                    &hardware,
+                    &infInfo,
+                    onlyExtract,
+                );
+                tx.send((hardware, result)).expect("send result");
             });
-            taskList.push(task);
         }
 
         // 等待所有线程执行完成
-        let _ = taskList
-            .into_iter()
-            .map(|task| task.join())
-            .collect::<Vec<_>>();
+        drop(tx);  // 关闭发送端
+        for (_hardware, result) in rx.iter() {
+            match result {
+                Ok(msg) => writeConsole(ConsoleType::Success, &msg),
+                Err(err) => writeConsole(ConsoleType::Err, &err),
+            }
+        }
     }
     Ok(())
 }
 
 
-/// 加载驱动包
+/// 安装驱动包
 /// # 参数
 /// 1. 驱动包路径
 /// 2. 解压密码
@@ -223,7 +235,7 @@ pub fn loadDriver(
 /// 4. 硬件信息
 /// 5. INF信息列表
 /// 6. 是否仅解压
-fn loadDriverPackage(
+fn installDriver(
     driverPackPath: &Path,
     password: Option<String>,
     driversPath: &Path,
