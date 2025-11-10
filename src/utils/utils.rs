@@ -1,0 +1,894 @@
+use crate::Asset;
+use anyhow::{anyhow, Context, Result};
+use chrono::Local;
+use glob::MatchOptions;
+use goblin::pe::PE;
+use std::cmp::Ordering;
+use std::ffi::{OsStr, OsString};
+use std::fs::{read, File, OpenOptions};
+use std::io::{BufWriter, Write};
+use std::iter::repeat_with;
+use std::os::windows::ffi::{OsStrExt, OsStringExt};
+use std::path::{Path, PathBuf};
+use std::{env, fs, io};
+use walkdir::WalkDir;
+use windows::core::BOOL;
+use windows::Win32::Foundation::{FILETIME, MAX_PATH, SYSTEMTIME};
+use windows::Win32::Storage::FileSystem::{
+    GetDiskFreeSpaceExW, GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW,
+    VS_FIXEDFILEINFO,
+};
+use windows::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+};
+use windows::Win32::System::Ioctl::{
+    PropertyStandardQuery, StorageDeviceProperty, IOCTL_STORAGE_QUERY_PROPERTY,
+    STORAGE_DEVICE_DESCRIPTOR, STORAGE_PROPERTY_QUERY,
+};
+use windows::Win32::System::SystemInformation::{
+    GetNativeSystemInfo, GetWindowsDirectoryW, PROCESSOR_ARCHITECTURE, SYSTEM_INFO,
+};
+use windows::Win32::System::Threading::{GetCurrentProcess, GetCurrentProcessId, IsWow64Process};
+use windows::Win32::System::Time::FileTimeToSystemTime;
+use windows::{
+    core::PCWSTR,
+    Win32::{
+        Foundation::{CloseHandle, INVALID_HANDLE_VALUE},
+        Storage::FileSystem::GetDriveTypeW,
+        Storage::FileSystem::FILE_ATTRIBUTE_NORMAL,
+        Storage::FileSystem::{
+            CreateFileW, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+            OPEN_EXISTING,
+        },
+        System::Ioctl::IOCTL_STORAGE_EJECT_MEDIA,
+        System::IO::DeviceIoControl,
+    },
+};
+
+/// 写到文件
+///
+/// # 参数
+/// - `file_path`: 静态文件名
+/// - `out_path`: 输出路径
+///
+/// # 返回值
+/// - `Ok(())`: 写入成功
+/// - `Err(...)`：失败则返回错误
+pub fn write_embed_file(file_path: &str, out_path: &Path) -> Result<()> {
+    let file =
+        Asset::get(file_path).with_context(|| format!("Embedded file not found: {}", file_path))?;
+    File::create(out_path)
+        .with_context(|| format!("Failed to create file: {}", out_path.display()))?
+        .write_all(&file.data)
+        .with_context(|| format!("Failed to write file: {}", out_path.display()))?;
+    Ok(())
+}
+
+/// 写日志
+///
+/// # 参数
+/// - `log_path`: 日志路径
+/// - `content` 日志内容
+///
+/// # 返回值
+/// - `Ok(())`: 写入成功
+/// - `Err(...)`：失败则返回错误
+pub fn write_log(log_path: &Path, content: &str) -> Result<()> {
+    let file = OpenOptions::new()
+        .create(true) // 如果不存在则创建
+        .append(true) // 追加模式
+        .open(log_path)
+        .with_context(|| format!("Open log file failed: {}", log_path.display()))?;
+    let datetime = Local::now().format("%Y-%m-%d %T").to_string();
+
+    let mut writer = BufWriter::new(file);
+    writeln!(writer, "{} {}", datetime, content)
+        .with_context(|| format!("Write log file failed: {}", log_path.display()))?;
+    Ok(())
+}
+
+/// 返回当前进程的父进程 PID
+fn get_parent_pid(pid: u32) -> windows::core::Result<u32> {
+    unsafe {
+        // 全进程快照
+        let h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)?;
+        if h.is_invalid() {
+            return Err(windows::core::Error::from_win32());
+        }
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+
+        // 枚举第一个
+        Process32FirstW(h, &mut entry)?;
+        loop {
+            if entry.th32ProcessID == pid {
+                let _ = CloseHandle(h);
+                return Ok(entry.th32ParentProcessID);
+            }
+            if Process32NextW(h, &mut entry).is_err() {
+                break;
+            }
+        }
+        let _ = CloseHandle(h);
+        Err(windows::core::Error::from_win32())
+    }
+}
+
+/// 给定 PID，返回进程名（不含路径），如 "explorer.exe"
+fn get_process_name(pid: u32) -> windows::core::Result<String> {
+    unsafe {
+        let h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)?;
+        if h.is_invalid() {
+            return Err(windows::core::Error::from_win32());
+        }
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+
+        Process32FirstW(h, &mut entry)?;
+        loop {
+            if entry.th32ProcessID == pid {
+                // 找到第一个 NUL 终止符
+                let len = entry
+                    .szExeFile
+                    .iter()
+                    .position(|&c| c == 0)
+                    .unwrap_or(MAX_PATH as usize);
+                let name = OsString::from_wide(&entry.szExeFile[..len])
+                    .into_string()
+                    .map_err(|_| windows::core::Error::from_win32())?;
+                let _ = CloseHandle(h);
+                return Ok(name);
+            }
+            if Process32NextW(h, &mut entry).is_err() {
+                break;
+            }
+        }
+        let _ = CloseHandle(h);
+        Err(windows::core::Error::from_win32())
+    }
+}
+
+/// 检查父进程名是否为 explorer.exe
+pub fn launched_from_explorer() -> bool {
+    let self_pid = unsafe { GetCurrentProcessId() };
+    if let Ok(ppid) = get_parent_pid(self_pid)
+        && let Ok(name) = get_process_name(ppid)
+    {
+        return name.eq_ignore_ascii_case("explorer.exe");
+    }
+    false
+}
+
+/// 遍历目录及子目录下的所有指定文件
+///
+/// # 参数
+/// - `path`: 目录路径
+/// - `file_type`: 文件通配符（如 *.inf）
+///
+/// # 返回值
+/// - `Ok(Vec<PathBuf>)`: 文件列表
+/// - `Err(...)`：失败则返回错误
+pub fn get_file_list(path: &Path, file_type: &str) -> Result<Vec<PathBuf>> {
+    let search = glob::glob_with(
+        &format!(r"{}\**\{}", path.to_string_lossy(), file_type),
+        MatchOptions {
+            case_sensitive: false,
+            require_literal_separator: false,
+            require_literal_leading_dot: false,
+        },
+    )
+    .with_context(|| format!("Failed to glob path: {}", path.display()))?;
+    Ok(search
+        .into_iter()
+        .filter(|item| item.as_ref().unwrap().is_file())
+        .map(|item| item.unwrap())
+        .collect())
+}
+
+/// 复制目录及子目录下的所有文件
+///
+/// # 参数
+/// - `src`: 源路径
+/// - `dst`: 目标路径
+///
+/// # 返回值
+/// - `Ok(())`: 成功
+/// - `Err(...)`：失败则返回错误
+pub fn copy_dir(src: &Path, dst: &Path) -> io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in WalkDir::new(src) {
+        let entry = entry?;
+        let rel = entry.path().strip_prefix(src).unwrap();
+        let target = dst.join(rel);
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&target)?;
+        } else {
+            fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
+}
+
+/// 移动目录及子目录下的所有文件
+///
+/// # 参数
+/// - `src`: 源路径
+/// - `dst`: 目标路径
+///
+/// # 返回值
+/// - `Ok(())`: 成功
+/// - `Err(...)`：失败则返回错误
+pub fn move_dir(src: &Path, dst: &Path) -> io::Result<()> {
+    // 如果在同一文件系统，rename 最快
+    if fs::rename(src, dst).is_ok() {
+        return Ok(());
+    }
+    // 否则，退回到复制 + 删除
+    copy_dir(src, dst)?;
+    fs::remove_dir_all(src)?;
+    Ok(())
+}
+
+/// 是否为压缩包文件
+pub fn is_archive(file_path: &Path) -> bool {
+    let file_ext = file_path.extension().unwrap().to_str().unwrap_or("");
+    let support_extension = ["7z", "zip", "rar", "cab", "tar", "wim"];
+    for item in support_extension.iter() {
+        if file_ext.eq_ignore_ascii_case(item) {
+            return true;
+        }
+    }
+    false
+}
+
+/// 将 FILETIME 转换为字符串格式（yyyy-MM-dd）
+///
+/// # 参数
+/// - `filetime`: 文件时间
+///
+/// # 返回值
+/// - `Ok(String)`: 成功
+/// - `Err(...)`：失败则返回错误
+pub fn filetime_to_string(filetime: &FILETIME) -> Result<String, windows::core::Error> {
+    let mut system_time: SYSTEMTIME = unsafe { std::mem::zeroed() };
+
+    unsafe {
+        match FileTimeToSystemTime(filetime, &mut system_time) {
+            Ok(_) => Ok(format!(
+                "{:04}-{:02}-{:02}",
+                system_time.wYear, system_time.wMonth, system_time.wDay,
+            )),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+/// 比较版本号大小
+///
+/// # 参数
+/// - `version1`: 版本号1
+/// - `version2`: 版本号2
+///
+/// # 返回值
+/// - `Ok(Ordering)`
+/// - `Err(...)`：失败则返回错误
+pub fn compare_version(version1: &str, version2: &str) -> Result<Ordering> {
+    let ver1: Vec<&str> = version1.split('.').collect();
+    let ver2: Vec<&str> = version2.split('.').collect();
+    let n1 = ver1.len();
+    let n2 = ver2.len();
+
+    // 比较版本
+    for i in 0..std::cmp::max(n1, n2) {
+        let i1 = match ver1.get(i) {
+            Some(s) => s
+                .parse::<u32>()
+                .with_context(|| format!("Parse version1 part {} to u32 failed", s))?,
+            None => 0,
+        };
+        let i2 = match ver2.get(i) {
+            Some(s) => s
+                .parse::<u32>()
+                .with_context(|| format!("Parse version2 part {} to u32 failed", s))?,
+            None => 0,
+        };
+        match i1.cmp(&i2) {
+            Ordering::Equal => continue,
+            non_eq => return Ok(non_eq),
+        }
+    }
+    Ok(Ordering::Equal)
+}
+
+/// 生成临时文件名
+///
+/// # 参数
+/// - `prefix`: 前缀
+/// - `suffix`: 后缀
+/// - `rand_len`: 长度
+///
+/// # 返回值
+/// - `OsString` : 临时文件名
+pub fn get_temp_name(prefix: &str, suffix: &str, rand_len: usize) -> OsString {
+    let capacity = prefix
+        .len()
+        .saturating_add(suffix.len())
+        .saturating_add(rand_len);
+    let mut buf = OsString::with_capacity(capacity);
+    buf.push(prefix);
+    let mut char_buf = [0u8; 4];
+    for c in repeat_with(fastrand::alphanumeric).take(rand_len) {
+        buf.push(c.encode_utf8(&mut char_buf));
+    }
+    buf.push(suffix);
+    buf
+}
+
+/// 提取指定字符串中全部%%形式的变量名
+pub fn extract_vars(s: &str) -> Vec<String> {
+    s.split('%')
+        .enumerate()
+        .filter_map(|(i, part)| {
+            // 只保留奇数索引部分（两个%之间的内容）
+            if i % 2 == 1 && !part.is_empty() {
+                // 过滤合法字符（字母、数字、下划线）
+                part.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_')
+                    .then(|| part.to_string())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// 是否为离线系统
+///
+/// # 参数
+/// - `system_path`: 系统盘路径
+///
+/// # 返回值
+/// - `Ok(bool)`: 是返回 `true`，否返回 `false`
+/// - `Err(...)`：失败则返回错误
+pub fn is_offline_system(system_path: &Path) -> Result<bool> {
+    // 拼接 Windows 子目录
+    let system_path = PathBuf::from(system_path).join("Windows");
+
+    // 判断系统目录是否存在
+    if !system_path.exists() {
+        return Ok(false);
+    }
+
+    // 获取当前系统的 SystemRoot，如 C:\Windows
+    let mut buffer = [0u16; 260];
+    let len = unsafe { GetWindowsDirectoryW(Some(&mut buffer)) };
+    if len == 0 {
+        return Err(anyhow!("Get system path failed"));
+    }
+    let current_system = PathBuf::from(String::from_utf16_lossy(&buffer[..len as usize]));
+
+    let input_path = system_path
+        .canonicalize()
+        .with_context(|| "canonicalize system path failed")?;
+    let current_path = current_system
+        .canonicalize()
+        .with_context(|| "canonicalize current system path failed")?;
+
+    Ok(input_path != current_path)
+}
+
+/// 判断是否运行在64位系统中
+///
+/// # 返回值
+/// - `Ok(bool)`: 运行在64位系统中
+///   - `true`: 运行在64位系统中
+///   - `false`: 运行在32位系统中
+/// - `Err(...)`：获取系统信息失败
+///
+/// # 说明
+/// - 此函数通过查询当前进程是否为WOW64进程来判断是否运行在64位系统中。
+/// - 仅当本进程为 32-bit 编译时才需要判断（64-bit 编译的进程上 IsWow64Process 返回 false）
+pub fn is_running_under_wow64() -> Result<bool, windows::core::Error> {
+    // 仅当本进程为 32-bit 编译时才需要判断（64-bit 编译的进程上 IsWow64Process 返回 false）
+    unsafe {
+        let mut wow64: BOOL = BOOL(0);
+        IsWow64Process(GetCurrentProcess(), &mut wow64)?;
+        Ok(wow64.as_bool())
+    }
+}
+
+/// 获取当前系统的处理器架构。
+///
+/// 此函数通过调用 Windows API `GetNativeSystemInfo` 来检索有关当前系统体系结构的信息。
+/// 它返回 `wProcessorArchitecture` 字段的值，该值标识处理器架构。
+///
+/// # 返回值
+/// - `u16`: 代表系统处理器架构的数值。常见的值包括：
+///   - `0` (PROCESSOR_ARCHITECTURE_INTEL): Intel 或兼容的 x86 架构。
+///   - `9` (PROCESSOR_ARCHITECTURE_AMD64): x64 (AMD64) 架构。
+///   - `12` (PROCESSOR_ARCHITECTURE_ARM64): ARM64 架构。
+///   - 其他值表示其他或未知的架构类型。
+pub fn get_native_arch() -> PROCESSOR_ARCHITECTURE {
+    let mut sys_info = SYSTEM_INFO::default();
+    unsafe {
+        GetNativeSystemInfo(&mut sys_info);
+        sys_info.Anonymous.Anonymous.wProcessorArchitecture
+    }
+}
+
+/// 获取离线系统架构
+///
+/// # 参数
+/// - `system_path`: 系统目录
+///
+/// # 返回值
+/// - `Ok(u16)`: PE 文件 Machine 字段
+///   - `0x014c` → x86
+///   - `0x8664` → x64
+///   - `0xAA64` → ARM64
+/// - `Err(...)`：读取或解析失败
+pub fn get_offline_system_arch(system_path: &Path) -> Result<u16> {
+    let krnl_path = system_path
+        .join("Windows")
+        .join("System32")
+        .join("ntoskrnl.exe");
+    let bytes = read(&krnl_path).with_context(|| format!("read {:?}", krnl_path))?;
+    let pe = PE::parse(&bytes).with_context(|| format!("parse {:?}", krnl_path))?;
+
+    let machine = pe.header.coff_header.machine;
+    Ok(machine)
+}
+
+/// 查找离线系统盘(跳过当前系统盘)
+///
+/// # 返回值
+/// - `Vec<PathBuf>`: 系统盘列表
+pub fn find_offline_system() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    // 获取当前系统盘符
+    let current_system_drive = env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string());
+
+    for letter in b'C'..=b'Z' {
+        let drive = format!("{}:", letter as char);
+        // 跳过当前系统盘
+        if drive.eq_ignore_ascii_case(&current_system_drive) {
+            continue;
+        }
+        let path = Path::new(&drive);
+        if path.exists()
+            && path
+                .join("Windows")
+                .join("System32")
+                .join("ntoskrnl.exe")
+                .exists()
+        {
+            candidates.push(path.to_path_buf());
+        }
+    }
+    candidates
+}
+
+/// 弹出可移动设备（U盘、CDROM设备等）
+///
+/// # 参数
+/// - `drive_path`: 盘符，如 "D:"
+///
+/// # 返回值
+/// - `Ok(())`: 成功弹出设备
+/// - `Err(...)`：弹出失败则返回错误
+pub fn eject_drive(drive_path: &Path) -> Result<()> {
+    // 盘符必须形如 "D:"，我们需要构造设备路径 "\\.\D:"
+    let drive_letter = drive_path
+        .to_str()
+        .ok_or(anyhow!("Invalid drive path"))?
+        .chars()
+        .take(2)
+        .collect::<String>();
+    let device_path = format!(r"\\.\{}", drive_letter);
+
+    // Windows API 要求宽字符串，转成 Vec<u16>，并以0结尾
+    let device_path_w: Vec<u16> = OsStr::new(&device_path)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    // 以读写方式打开设备
+    let handle = unsafe {
+        CreateFileW(
+            PCWSTR(device_path_w.as_ptr()),
+            FILE_GENERIC_READ.0 | FILE_GENERIC_WRITE.0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            None, // lpsecurityattributes: Option<*const SECURITY_ATTRIBUTES>
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            None, // htemplatefile: Option<HANDLE>
+        )
+        .with_context(|| format!("Failed to open device handle for {}", device_path))?
+    };
+
+    if handle == INVALID_HANDLE_VALUE {
+        return Err(anyhow!("Failed to open device handle"));
+    }
+
+    // 调用 DeviceIoControl 发送弹出命令
+    let mut bytes_returned: u32 = 0;
+    let result = unsafe {
+        DeviceIoControl(
+            handle,
+            IOCTL_STORAGE_EJECT_MEDIA,
+            None, // lpinbuffer: Option<*const c_void>
+            0,
+            None, // lpoutbuffer: Option<*mut c_void>
+            0,
+            Some(&mut bytes_returned), // lpbytesreturned: Option<*mut u32>
+            None,                      // lpoverlapped: Option<*mut OVERLAPPED>
+        )
+    };
+
+    unsafe {
+        CloseHandle(handle).ok();
+    }
+
+    result.map_err(|e| e.into())
+}
+
+/// 获取设备类型
+///
+/// # 参数
+/// - `drive_path`: 盘符
+///
+/// # 返回值
+/// - `0`: 无法确定驱动器类型。
+/// - `1`: 根路径无效;例如，在指定路径上没有装载卷。
+/// - `2`: 驱动器具有可移动媒体;例如，软盘驱动器、拇指驱动器或闪存卡读卡器。
+/// - `3`: 驱动器具有固定媒体;例如，硬盘驱动器或闪存驱动器。
+/// - `4`: 驱动器是远程（网络）驱动器。
+/// - `5`: 驱动器是 CD-ROM 驱动器。
+/// - `6`: 驱动器是 RAM 磁盘。
+pub fn get_drive_type(drive_path: &Path) -> u32 {
+    // 传入格式需要类似 "E:\" 的路径，确保最后有反斜杠
+    let mut drive_str = drive_path.as_os_str().encode_wide().collect::<Vec<u16>>();
+    if !drive_str.ends_with(&[b'\\' as u16]) {
+        drive_str.push(b'\\' as u16);
+    }
+    drive_str.push(0); // 结尾null
+
+    unsafe { GetDriveTypeW(PCWSTR(drive_str.as_ptr())) }
+}
+
+/// 获取指定盘符设备的 BusType（返回值为 u8），失败返回 None
+///
+/// # 参数
+/// - `drive_path`: 盘符
+///
+/// # 返回值
+/// - `Some(u32)`: 成功获取 BusType，返回值为 u32 类型
+/// - `None`: 获取失败，返回 None
+pub fn get_drive_bus(drive_path: &Path) -> Option<u32> {
+    // 盘符必须形如 "D:"，我们需要构造设备路径 "\\.\D:"
+    let drive_letter = drive_path
+        .to_str()
+        .ok_or("Invalid drive path")
+        .unwrap()
+        .chars()
+        .take(2)
+        .collect::<String>();
+    let device_path = format!(r"\\.\{}", drive_letter);
+
+    // Windows API 要求宽字符串，转成 Vec<u16>，并以0结尾
+    let device_path_w: Vec<u16> = OsStr::new(&device_path)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    // 以读写方式打开设备
+    let handle = unsafe {
+        CreateFileW(
+            PCWSTR(device_path_w.as_ptr()),
+            FILE_GENERIC_READ.0 | FILE_GENERIC_WRITE.0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            None, // lpsecurityattributes: Option<*const SECURITY_ATTRIBUTES>
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            None, // htemplatefile: Option<HANDLE>
+        )
+        .unwrap()
+    };
+
+    if handle == INVALID_HANDLE_VALUE {
+        return None;
+    }
+
+    let query = STORAGE_PROPERTY_QUERY {
+        PropertyId: StorageDeviceProperty,
+        QueryType: PropertyStandardQuery,
+        ..Default::default()
+    };
+
+    let mut buffer = vec![0u8; 512];
+    let mut returned = 0u32;
+
+    let ok = unsafe {
+        DeviceIoControl(
+            handle,
+            IOCTL_STORAGE_QUERY_PROPERTY,
+            Some(&query as *const _ as _),
+            size_of_val(&query) as _,
+            Some(buffer.as_mut_ptr() as _),
+            buffer.len() as _,
+            Some(&mut returned),
+            None,
+        )
+    }
+    .is_ok();
+
+    unsafe {
+        CloseHandle(handle).ok();
+    }
+
+    if !ok {
+        return None;
+    }
+
+    let desc = unsafe { &*(buffer.as_ptr() as *const STORAGE_DEVICE_DESCRIPTOR) };
+    Some(desc.BusType.0 as u32)
+}
+
+/// 获取指定盘符设备的总空间
+///
+/// # 参数
+/// - `drive_path`: 盘符
+///
+/// # 返回值
+/// - `Some(u64)`: 返回值单位为字节（返回值 ÷ 1024 ÷ 1024即为MB）
+/// - `None`: 获取出错
+pub fn get_drive_space(drive_path: &Path) -> Option<u64> {
+    // 转换 &Path 为 null 结尾的宽字符 Vec<u16>
+    let wide_path: Vec<u16> = drive_path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let mut free_bytes_available = 0u64;
+    let mut total_number_of_bytes = 0u64;
+    let mut total_number_of_free_bytes = 0u64;
+
+    let result = unsafe {
+        GetDiskFreeSpaceExW(
+            PCWSTR(wide_path.as_ptr()),
+            Some(&mut free_bytes_available),
+            Some(&mut total_number_of_bytes),
+            Some(&mut total_number_of_free_bytes),
+        )
+    };
+
+    match result {
+        Ok(_) => Some(total_number_of_bytes),
+        Err(_) => None,
+    }
+}
+
+/// 判断指定盘符是否为免驱设备虚拟的CDROM盘符
+///
+/// # 参数
+/// - `drive_path`: 盘符
+///
+/// # 返回值
+/// - `true`: 是
+/// - `false`: 不是
+pub fn is_driver_cd(drive_path: &Path) -> bool {
+    // 判断是否为CDROM
+    if get_drive_type(drive_path) != 5 {
+        return false;
+    }
+
+    // 判断总线是否为USB
+    if get_drive_bus(drive_path) != Some(7) {
+        return false;
+    }
+
+    // 判断容量是否小于32MB
+    if get_drive_space(drive_path).is_some_and(|space| space > 32 * 1024 * 1024) {
+        return false;
+    }
+
+    // 判断是否存在exe驱动安装包
+    if !fs::read_dir(drive_path)
+        .ok()
+        .map(|entries| {
+            entries.flatten().any(|entry| {
+                entry
+                    .path()
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
+            })
+        })
+        .unwrap_or(false)
+    {
+        return false;
+    };
+
+    true
+}
+
+/// 将文件大小格式化为可读字节单位（MiB/KiB）
+///
+/// # 参数
+/// - `bytes`: 字节数
+///
+/// # 返回值
+/// - `String` : 可读的字节单位
+pub fn format_bytes(bytes: u64) -> String {
+    let kb = 1024f64;
+    let b = bytes as f64;
+    if b >= kb.powi(3) {
+        format!("{:.1} GB", b / kb.powi(3))
+    } else if b >= kb.powi(2) {
+        format!("{:.1} MB", b / kb.powi(2))
+    } else if b >= kb {
+        format!("{:.1} KB", b / kb)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
+/// 获取EXE程序的文件版本。
+///
+/// 此函数通过 Windows API 查询 PE 文件的版本信息，提取其中的数字版本号。
+///
+/// # 参数
+/// - `path`: 可执行文件的路径。
+///
+/// # 返回值
+/// - `Ok(Some(version_string))`: 如果成功获取到版本号，返回格式为 "Major.Minor.Patch.Build" 的字符串。
+/// - `Ok(None)`: 如果文件没有版本信息，或者无法获取。
+/// - `Err(error)`: 如果在读取或解析过程中发生错误。
+pub fn get_exe_file_version(path: &Path) -> Result<Option<String>> {
+    // 1. 将 Rust Path 转换为 Windows API 所需的宽字符串 (UTF-16)
+    let path_wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    // 2. 获取版本信息块的大小
+    let mut handle = 0u32;
+    let info_size =
+        unsafe { GetFileVersionInfoSizeW(PCWSTR(path_wide.as_ptr()), Some(&mut handle)) };
+
+    if info_size == 0 {
+        // 文件没有版本信息，或者文件不存在/无法访问
+        return Ok(None);
+    }
+
+    // 3. 分配缓冲区来存储版本信息
+    let mut info_buffer = vec![0u8; info_size as usize];
+
+    // 4. 获取版本信息到缓冲区
+    if unsafe {
+        GetFileVersionInfoW(
+            PCWSTR(path_wide.as_ptr()),
+            Some(handle),
+            info_size,
+            info_buffer.as_mut_ptr() as *mut std::ffi::c_void,
+        )
+    }
+    .is_err()
+    {
+        // 无法获取版本信息
+        return Ok(None);
+    }
+
+    // 5. 查询固定文件信息结构体 (VS_FIXEDFILEINFO)，它位于版本信息块的根路径 "\\"
+    let mut value_ptr = std::ptr::null_mut();
+    let mut value_len = 0u32;
+
+    // 查询字符串为 "\\"，表示根信息
+    let query_wide: Vec<u16> = OsStr::new("\\")
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let success_query = unsafe {
+        VerQueryValueW(
+            info_buffer.as_ptr() as *mut std::ffi::c_void,
+            PCWSTR(query_wide.as_ptr()),
+            &mut value_ptr,
+            &mut value_len,
+        )
+    };
+
+    if success_query == BOOL(0) || value_len == 0 {
+        // 未能查询到固定文件信息
+        return Ok(None);
+    }
+
+    // 6. 将获取到的指针转换为 VS_FIXEDFILEINFO 结构体
+    // 确保返回的长度足够容纳 VS_FIXEDFILEINFO 结构体
+    if value_len < std::mem::size_of::<VS_FIXEDFILEINFO>() as u32 {
+        return Err(anyhow!(
+            "Returned data too small for VS_FIXEDFILEINFO: {}",
+            value_len
+        ));
+    }
+
+    let fixed_file_info = unsafe { *(value_ptr as *const VS_FIXEDFILEINFO) };
+
+    // 7. 从 VS_FIXEDFILEINFO 结构体中提取版本组件
+    // dwFileVersionMS 包含主版本和次版本 (高 16 位是主版本，低 16 位是次版本)
+    let major = (fixed_file_info.dwFileVersionMS >> 16) as u16;
+    let minor = (fixed_file_info.dwFileVersionMS & 0xFFFF) as u16;
+    // dwFileVersionLS 包含修订版本和构建版本 (高 16 位是修订版本，低 16 位是构建版本)
+    let patch = (fixed_file_info.dwFileVersionLS >> 16) as u16;
+    let build = (fixed_file_info.dwFileVersionLS & 0xFFFF) as u16;
+
+    // 8. 格式化版本字符串
+    let version_string = format!("{}.{}.{}.{}", major, minor, patch, build);
+
+    Ok(Some(version_string))
+}
+
+// 增加字符串自定义方法
+pub trait String_utils {
+    fn get_string_left(&self, right: &str) -> Result<String>;
+    fn get_string_center(&self, start: &str, end: &str) -> Result<String>;
+    fn get_string_right(&self, left: &str) -> Result<String>;
+}
+
+impl String_utils for String {
+    /// 取出字符串左边文本
+    ///
+    /// # 参数
+    /// - `right`: 分隔符，用于确定左边文本的结束位置
+    ///
+    /// # 返回值
+    /// - `Ok(String)`: 成功取出左边文本
+    /// - `Err(...)`：失败则返回错误
+    fn get_string_left(&self, right: &str) -> Result<String> {
+        let end_size = self
+            .find(right)
+            .with_context(|| "Find right position failed")?;
+        Ok((self[..end_size]).to_string())
+    }
+
+    /// 取出字符串中间文本
+    ///
+    /// # 参数
+    /// - `start`: 分隔符，用于确定中间文本的开始位置
+    /// - `end`: 分隔符，用于确定中间文本的结束位置
+    ///
+    /// # 返回值
+    /// - `Ok(String)`: 成功取出中间文本
+    /// - `Err(...)`：失败则返回错误
+    fn get_string_center(&self, start: &str, end: &str) -> Result<String> {
+        let start_size = self
+            .find(start)
+            .with_context(|| "Find start position failed")?;
+        let end_size = start_size
+            + self[start_size..]
+                .find(end)
+                .with_context(|| "Find end position failed")?;
+        Ok((self[start_size + start.len()..end_size]).to_string())
+    }
+
+    /// 取出字符串右边文本
+    ///
+    /// # 参数
+    /// - `left`: 分隔符，用于确定右边文本的开始位置
+    ///
+    /// # 返回值
+    /// - `Ok(String)`: 成功取出右边文本
+    /// - `Err(...)`：失败则返回错误
+    fn get_string_right(&self, left: &str) -> Result<String> {
+        let start_size = self
+            .find(left)
+            .with_context(|| "Find left position failed")?;
+        Ok((self[start_size + left.len()..]).to_string())
+    }
+}

@@ -6,32 +6,52 @@
 
 `DriverIndexer` is a tool for creating, reading and installing driver package indexes.
 
+- ⚡ **On-demand Decompression** - Only decompresses drivers that match current devices, significantly improving
+  installation speed
+- 🎯 **Smart Matching** - Automatically identifies hardware and matches appropriate drivers
+- 📦 **Multi-format Support** - Supports various driver package formats including directories and 7z archives
+- 🔄 **Offline Support** - Supports offline system driver management without relying on DISM environment
+- 🖥️ **Command Line Interface** - Can be installed silently for automated deployment
+- 🛠️ **Driver Management** - Import, export, and remove system drivers
+- 🔧 **Driver Packaging** - Merge drivers with the program into a single executable file
+
 ### What is the use of `DriverIndexer`?
 
-For the convenience of installation, many people pack multiple drivers into one driver package. Generally, installing the driver package needs to decompress all of them, and then call tools such as `Dpinst` to install the driver. This method is very time-consuming and performance-consuming. The function of `DriverIndexer` is to decompress the currently matched driver on demand and install it automatically.
+Many people pack multiple drivers into one driver package for convenience in installation. Generally, installing a
+driver package requires decompressing all files and then calling tools like `Dpinst` to install drivers, which is very
+time-consuming and resource-intensive. The function of `DriverIndexer` is to decompress only the currently matched
+drivers on demand and install them automatically.
 
 ### What is an index file?
 
-Since the hardware ID is stored in the INF file, decompression on demand needs to establish a correspondence between the hardware ID list in the INF file and the path of the driver in the driver package. This correspondence is called an index. According to the index, the driver that needs to be installed can be decompressed, and then installed.
+Since hardware IDs are stored in INF files, on-demand decompression requires establishing a correspondence between the
+`list of hardware IDs in INF files` and the `paths of drivers within the driver package`. This correspondence is called
+an `index`. Based on the index, the required drivers for a device can be determined, enabling on-demand decompression
+and installation.
 
 ### Why does the index file use the `JSON` format?
 
-Under normal circumstances, the index in a driver package will not exceed 10MB, and this size of data is enough to use the common `JSON` format.
+Under normal circumstances, an index in a driver package will not exceed 10MB, and this amount of data is sufficiently
+handled by the common `JSON` format.
 
-### Why can I install the driver without specifying the index file?
+### Why can I install drivers without specifying an index file?
 
-When no index file is specified, `DriverIndexer` will decompress all INF files in the driver package, create an index instantly, and finally match the driver according to the index information.
+When no index file is specified, `DriverIndexer` decompresses all INF files in the driver package, creates an index
+instantly, and finally matches drivers based on the index information.
 
 ### What is the difference with EasyDrv/DrvCeo?
 
-`DriverIndexer` is a command line program, which means that the driver can be installed silently without interface interaction, making the experience the same as the built-in driver.
+`DriverIndexer` is a command-line program, which means drivers can be installed silently without interface interaction,
+providing an experience similar to built-in drivers.
 
-### Where can I get the driver package?
+### Where can I get driver packages?
 
-> We recommend downloading and collecting driver packages by ourselves. If necessary, you can also extract the driver packages in each driver software by yourself (generally, such driver packages are copyright-free)
+> We recommend downloading and collecting driver packages yourself. If needed, you can also extract driver packages from
+> various driver software (generally, such driver packages are copyright-free).
 
-The following are the recommended downloading websites for the driver package (all free and without encryption)
+The following are recommended websites for downloading driver packages (all free and unencrypted):
 
+- [SamDrivers](https://driveroff.net)
 - [DriverPack](https://drp.su/en/foradmin?_blank)
 - [3DP](https://www.3dpchip.com/3dpchip/3dp/net_down.php?_blank)
 - [DriverOff](https://driveroff.net/category/dp?_blank)
@@ -39,102 +59,203 @@ The following are the recommended downloading websites for the driver package (a
 
 ## Software Architecture
 
-Use `Rust` to write, call `Devcon.exe` to obtain hardware information, and use API to install device drivers.
+Written in `Rust`, it calls `Devcon.exe` to obtain hardware information and uses Windows API to install device drivers.
 
-### Drive matching rules
+### Driver Matching Rules
 
-1. By default, it only matches devices with no driver installed
-2. The priority of the dedicated driver is greater than that of the public version
-3. The higher version has priority over the lower version
-4. Three matches (to prevent unsuccessful installation of some drivers)
+1. By default, only matches devices without drivers installed
+2. Dedicated drivers have higher priority than generic ones
+3. Higher versions have higher priority than lower versions
+4. Three matching attempts (to prevent some drivers from failing to install)
 
-## Instructions for use
+## Usage Instructions
 
-This program is a command line program, so it needs to be run with parameters after it. For example, double-clicking the program directly will cause a "flash back" phenomenon. You can run it through terminals such as `cmd` and `PowerShell`.  
+This program is a command-line program, so it needs to be run with parameters after it. Double-clicking the program
+directly will cause a "flash back" phenomenon. You can run it through terminals such as `cmd` and `PowerShell`.  
 Note: Please run the terminal as an **administrator**.
+
+### Global Options
+
+`DriverIndexer.exe [Global Options] Command Parameters`
+
+- `--language <Language>`: Specify program language. Options are `en` (English), `zh-CN` (Simplified Chinese), `zh-TW` (
+  Traditional Chinese). Default is system language.
+- `--debug`: Enable debug mode. Print more debug information for troubleshooting.
+- `--log <LogFilePath>`: Enable log mode. Print all running information to the specified file for troubleshooting.
+- `--help`: View help information.
 
 ### Create Index
 
-`DriverIndexer.exe create-index DrivePath IndexFileSavePath [-p UnzipPassword]`
+Create index subcommand, used to create driver package indexes.
 
-- Create index from file
-    -`DriverIndexer.exe create-index D:\netcard.7z index.json`
-    -`DriverIndexer.exe create-index D:\netcard.7z D:\index.json`
-- Create an index from the catalog
-    -`DriverIndexer.exe create-index D:\netcard index.json`
-    -`DriverIndexer.exe create-index D:\netcard D:\index.json`
+`DriverIndexer.exe create-index <DriverPath> <IndexSavePath>`
+`DriverIndexer.exe index <DriverPath> <IndexSavePath>`
 
-### Load the driver
+- Options
+    - `--password <DecompressionPassword>`: Specify driver package password
 
-`DriverIndexer.exe load-driver drivePath/drivePackagePath [-p UnzipPassword] [--AllDevice] [--ExtractDriver] [--DriveClass DriveClass]`
+- Examples
+    - `DriverIndexer.exe create-index D:\netcard.7z D:\index.json`
+    - `DriverIndexer.exe create-index D:\netcard D:\index.json`
 
-- No driver index: `DriverIndexer.exe load-driver drivePath/drivePackagePath`
-  - `DriverIndexer.exe load-driver D:\netcard`
-  - `DriverIndexer.exe load-driver D:\netcard.7z`
-  - `DriverIndexer.exe load-driver D:\netcard\*.7z`
-- Drive index: `DriverIndexer.exe load-driver drivePath/drivePackagePath indexPath`
-  - `DriverIndexer.exe load-driver D:\netcard.7z netcard.json`
-  - `DriverIndexer.exe load-driver D:\netcard.7z D:\netcard.json`
-  - `DriverIndexer.exe load-driver D:\netcard\*.7z D:\netcard\*.json`
-- Specify drive type: `DriverIndexer.exe load-driver drivePath/drivePackagePath --DriveClass DriveType`
-  - `DriverIndexer.exe load-driver D:\AllDriver.7z --DriveClass Net`
-  - `DriverIndexer.exe load-driver D:\AllDriver.7z --DriveClass Display`
-- Match all devices：`DriverIndexer.exe load-driver drivePath/drivePackagePath --AllDevice`
-  - `DriverIndexer.exe load-driver D:\netcard.7z --AllDevice`
-- Decompress driver only：`DriverIndexer.exe load-driver drivePath/drivePackagePath --ExtractDriver UnzipDirectory`
-  - `DriverIndexer.exe load-driver D:\netcard.7z --ExtractDriver D:\netcard`
+### View Index Information
 
-### Organize the drive
+View index subcommand, used to view information in the index file.
 
-`DriverIndexer.exe classify-driver drivePath`
+`DriverIndexer.exe index-info <IndexPath>`
+`DriverIndexer.exe info <IndexPath>`
 
-- `DriverIndexer.exe classify-driver D:\netcard`
+### Install Driver
 
-### Create driver package program
+Install driver subcommand, used to install drivers from driver packages. Supports compressed packages (limited to
+formats supported by 7zip) and directory formats.
 
-> The driver package program merges `DriverIndexer` with the driver package to generate an exe binary executable file. The generated executable file will automatically read its own driver package and only decompress the required driver (avoid secondary decompression).
+`DriverIndexer.exe install-driver <DriverPath> [-p DecompressionPassword] [--AllDevice] [--ExtractDriver] [--class DriverClass]`
+`DriverIndexer.exe install <DriverPath> [-p DecompressionPassword] [--AllDevice] [--ExtractDriver] [--class DriverClass]`
 
-Note: **You cannot set a password for the driver package**.
+- Options
+    - `--password <DecompressionPassword>`: Specify driver package password
+    - `--class <DriverClass>`: Specify driver class
+    - `--match_device`: Match current system devices
+    - `--AllDevice`: Match all devices, default is to install only devices without drivers
+    - `--ExtractDriver <ExtractionDirectory>`: Only extract drivers, do not install
 
-`DriverIndexer.exe create-driver driver path output path`
+- Examples
+    - No driver index: `DriverIndexer.exe install-driver <DriverPath>`
+        - `DriverIndexer.exe install-driver D:\netcard`
+        - `DriverIndexer.exe install-driver D:\netcard.7z`
+        - `DriverIndexer.exe install-driver D:\netcard\*.7z`
+    - With driver index: `DriverIndexer.exe install-driver <DriverPath> <IndexPath>`
+        - `DriverIndexer.exe install-driver D:\netcard.7z netcard.json`
+        - `DriverIndexer.exe install-driver D:\netcard\*.7z D:\netcard\*.json`
 
-- Create a program driver package from a file
-  - `DriverIndexer.exe create-driver D:\netcard.7z D:\netcard.exe`
-- Create a program driver package from a directory
-  - `DriverIndexer.exe create-driver D:\netcard D:\netcard.exe`
+### Install Offline System Drivers
 
-### Open log
+Install drivers from offline system driver library. If no system drive is specified, it will search the entire disk for
+system drives. Default is to install only devices without drivers.
 
-The logs will be stored in the program directory: `\DriverIndexer.log`
+`DriverIndexer.exe install-offline-driver [SystemDrivePath]`
 
-`DriverIndexer.exe --debug command Parameter `
+- Options
+    - `--all-Device`: Match all devices
+    - `--class <DriverClass>`: Install only specified class drivers
 
-- `DriverIndexer.exe --debug create-index D:\netcard index.json`
-- `DriverIndexer.exe --debug load-driver D:\netcard`
+### List Drivers
 
-### View help
+List all drivers in the system, supports both online and offline systems.
 
-`DriverIndexer.exe commandName --help`
+`DriverIndexer.exe list-driver <SystemDrivePath>`
+`DriverIndexer.exe list <SystemDrivePath>`
 
-- `DriverIndexer.exe load-driver --help`
-- `DriverIndexer.exe create-index --help`
+- Options
+    - `--class <DriverClass>`: Specify driver class
+    - `--provider <DriverProvider>`: Specify driver provider
 
-## Open source license
+### Import Driver
 
-`DriverIndexer` uses GPL V3.0 agreement to open source, please try to abide by the open source agreement.
+Import all drivers from driver package into the system, supports both online and offline systems.
 
-## Thanks
+`DriverIndexer.exe import-driver <SystemDrivePath> <DriverPath>`
+`DriverIndexer.exe import <SystemDrivePath> <DriverPath>`
+
+- Options
+    - `--password <DecompressionPassword>`: Specify driver package password
+    - `--match-device`: Match current system devices
+
+### Export Driver
+
+Export all drivers from the system to a specified directory, supports both online and offline systems.
+
+`DriverIndexer.exe export-driver <SystemDrivePath> <ExportDirectory>`
+`DriverIndexer.exe export <SystemDrivePath> <ExportDirectory>`
+
+- Options
+    - `--inf <DriverName>`: Specify driver name
+    - `--class <DriverClass>`: Specify driver class
+    - `--provider <DriverProvider>`: Specify driver provider
+
+### Remove Driver
+
+Remove drivers from the system, supports both online and offline systems.
+
+`DriverIndexer.exe remove-driver <SystemDrivePath>`
+
+- Options
+    - `--inf <DriverName>`: Specify driver name
+    - `--class <DriverClass>`: Specify driver class
+    - `--provider <DriverProvider>`: Specify driver provider
+
+### Organize Driver
+
+Organize drivers in the specified directory by driver class and provider.
+
+`DriverIndexer.exe organize-driver DriverPath`
+
+- `DriverIndexer.exe organize-driver D:\netcard`
+
+### Create Driver Package Program
+
+Merge `DriverIndexer` with the driver package to generate an exe binary executable file. The generated executable file
+will automatically read its own driver package and only decompress the required drivers (avoiding secondary
+decompression).
+
+> Note: The driver package cannot be password-protected, otherwise driver installation will fail.
+
+`DriverIndexer.exe create-driver <DriverPath> <OutputPath>`
+
+- Examples
+    - Create program driver package from file
+        - `DriverIndexer.exe create-driver D:\netcard.7z D:\netcard.exe`
+    - Create program driver package from directory
+        - `DriverIndexer.exe create-driver D:\netcard D:\netcard.exe`
+
+## Driver Class Reference
+
+The following are common driver class names that can be used for the `--class` parameter:
+
+> Note:
+> - Driver class names are case-insensitive, e.g., `Display` and `display` have the same effect.
+> - Driver class names can be defined by driver manufacturers, so there are no restrictions on driver class names.
+    Please ensure the class name is correct.
+
+| Class Name  | Description                       |
+|-------------|-----------------------------------|
+| Display     | Display adapters                  |
+| Net         | Network adapters                  |
+| Media       | Sound, video and game controllers |
+| System      | System devices                    |
+| HID         | Human Interface Devices           |
+| USB         | USB controllers                   |
+| Bluetooth   | Bluetooth devices                 |
+| Printer     | Printers                          |
+| Imaging     | Imaging devices                   |
+| SCSIAdapter | SCSI and RAID controllers         |
+| DiskDrive   | Disk drives                       |
+| Computer    | Computer                          |
+| Processor   | Processors                        |
+| Monitor     | Monitors                          |
+| Keyboard    | Keyboards                         |
+| Pointer     | Mice and other pointing devices   |
+| Modem       | Modems                            |
+| Media       | Multimedia devices                |
+| System      | System devices                    |
+
+## Open Source License
+
+`DriverIndexer` is open source under the GPL V3.0 license, please try to comply with the open source agreement.
+
+## Acknowledgments
 
 - Hydrogen
 - Lightning
 - Skyfree
 - Red Sakuragi
-- Little duck
+- Little Duck
 - Gross Profit
 
-## Participate in Contribution
+## Contributing
 
-1. Fork this warehouse
-2. Create new Feat_xxx branch
-3. Submit the code
-4. New Pull Request
+1. Fork this repository
+2. Create a new Feat_xxx branch
+3. Commit your code
+4. Create a Pull Request

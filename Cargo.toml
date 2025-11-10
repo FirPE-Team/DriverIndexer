@@ -1,8 +1,8 @@
 [package]
 name = "DriverIndexer"
-version = "1.1.0"
+version = "2.0.0"
 authors = ["Fir"]
-edition = "2021"
+edition = "2024"
 build = "build.rs"
 
 [profile.release]
@@ -12,36 +12,38 @@ codegen-units = 1
 panic = 'abort'
 
 [build-dependencies]
-embed-resource = "2.4.3"
+embed-resource = "3.0.6"
 thunk-rs = "0.3.2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-vc-ltl = "5.1.1"
-clap = "4.5.16"
+vc-ltl = "5.2.2"
+clap = { version = "4.5.49", features = ["derive"] }
 glob = "0.3.1"
 chardet = "0.2.4"
 encoding = "0.2"
 serde = { version = "1.0.209", features = ["derive"] }
 serde_json = "1.0"
-rust-embed = "8.5.0"
+rust-embed = "8.7.2"
 lazy_static = "1.4.0"
 console = "0.15.8"
 chrono = "0.4"
-remove_dir_all = "1.0"
-unic-langid = "0.9.0"
-fluent-templates = "0.10.1"
-libloading = "0.8.5"
-widestring = "1.0.0-beta.1"
-fastrand = "2.1.1"
-goblin = "0.9.3"
+anyhow = "1.0.99"
+remove_dir_all = "0.7"
+libloading = "0.8.9"
+fastrand = "2.3.0"
+goblin = "0.10.3"
 walkdir = "2.5.0"
 threadpool = "1.8.1"
 num_cpus = "1.17.0"
+sys-locale = "0.3.2"
+rust-i18n = "3.1.5"
+bincode = "2.0.1"
+exitcode = "1.1.2"
 
 [dependencies.windows]
-version = "0.59.0"
-features = ["Win32_Globalization", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_Security", "Win32_System_Ioctl", "Win32_System_SystemInformation", "Win32_System_Com"]
+version = "0.61.3"
+features = ["Win32_Globalization", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_Security", "Win32_System_Ioctl", "Win32_System_SystemInformation", "Win32_System_Com", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_SystemServices", "Win32_System_Time"]
 
 [dependencies.windows-version]
 version = "0.1"

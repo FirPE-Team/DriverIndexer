@@ -1,0 +1,121 @@
+console:
+  info: "Info   "
+  success: "Success"
+  warning: "Warning"
+  err: "Error  "
+  debug: "Debug  "
+
+cmdline_tool_tips: "This is a command line tool, you need to run it from cmd.exe."
+temp-create-failed: "Temporary directory creation failed"
+temp-remove-failed: "Temporary directory deletion failed"
+
+# Template
+template: "{bin} V{version}\n\n Usage: {bin}.exe [options] [command] [parameters]\n\n Commands:\n {subcommands}\n\n Options:\n {options}"
+
+# Commands
+commands:
+  # Create index
+  create-index: "Create driver index. Index format: JSON"
+  index-info: "Output driver index information"
+  install-driver: "Install matching drivers. Automatically match drivers in the compressed package, decompress and install"
+  eject-virtual-drive: "Eject virtual CD-ROM of driver-free devices to identify real USB devices"
+  install-offline-driver: "Load offline system drivers"
+  list-driver: "List drivers. Support online system and offline system"
+  import-driver: "Import drivers. Support online system and offline system"
+  export-driver: "Export drivers. Support online system and offline system"
+  remove-driver: "Remove drivers. Support online system and offline system"
+  organize-driver: "Organize drivers"
+  pack-driver: "Create driver package"
+  scan-devices: "Scan new hardware"
+  help: "Print help information. Display this information or help for the specified command"
+# Options
+options:
+  lang: "Set program language"
+  save-index-path: "Index file save location"
+  package-path: "Compressed package path"
+  index-path: "Index file path"
+  package-password: "Set compressed package password"
+  match-all-device: "Match all devices"
+  match-device: "Match local devices"
+  driver-category: "Driver category"
+  only-unzip: "Only unzip drivers without installing"
+  force: "Force install drivers"
+  rename: "Rename driver directory"
+  system-drive: "System drive path"
+  export-path: "Export driver path"
+  driver-name: "Driver name (inf)"
+  driver-provider: "Driver provider"
+  debug: "Enable debug mode"
+  log-path: "Log file path"
+  help: "Print help information"
+  version: "Print version information"
+value-parser:
+  path-not-exist: "Path does not exist"
+  dir-not-exist: "Directory does not exist"
+  file-not-exist: "File does not exist"
+  not-system-path: "Not a system path"
+  not-dir: "Path is not a directory"
+
+# Create index
+create-index-info: "Creating driver index......"
+no-hardware: "No hardware information detected"
+inf-parsing-err: "INF parsing error"
+index-save-failed: "Index file save failed"
+no-inf-find: "No driver information found"
+total-info: "Processed %{total} drivers in total, %{success} drivers successful, %{error} drivers failed, %{blank} drivers without hardware information"
+save-info: "Driver index saved at %{path}"
+
+# Load driver
+driver-install-info: "Install driver"
+load-index: "Load index"
+no-device: "Failed to get hardware information"
+config-parse-failed: "Index file parsing failed, please regenerate the index file"
+driver-not-match-config: "Driver package does not match the index file, please regenerate the index file"
+no-driver-package: "No drivers detected in the driver package"
+no-found-driver-currently: "Cannot find devices that need driver installation"
+install-success: "Hardware: %{name}\n            Device: %{id}\n            Category: %{class}\n            Driver: %{driver}\n            Version: %{version}\n            Date: %{date}"
+install-failed: "Hardware: %{name}\n            Device: %{id}"
+driver-unzip-failed: "Driver decompression failed"
+driver-unzip-success: "Driver decompression successful"
+driver-install-failed: "Driver installation failed"
+driver-install-success: "Driver installation successful"
+
+# Load offline driver
+loading-offline-driver: "Loading offline system drivers (%{path})"
+not-found-offline-system: "No offline system found"
+
+# Import driver
+offline-Arch-Err: "Failed to get offline system architecture"
+driver-import-info: "Import driver"
+driver-import-success: "Driver import successful"
+driver-import-failed: "Driver import failed"
+driver-import-summary: "Processed %{total} drivers in total, %{success} successful, %{fail} failed"
+
+# Export driver
+driver-export-success: "File: %{file}\n            Category: %{class}\n            Version: %{version}\n            Date: %{date}"
+driver-export-failed: "Driver export failed"
+driver-export-not-found: "No drivers found that meet the conditions"
+driver-export-summary: "Processed %{total} drivers in total, %{success} successful, %{fail} failed"
+
+# Remove driver
+driver-remove-info: "Remove driver"
+driver-remove-success: "Driver removal successful"
+driver-remove-failed: "Driver removal failed"
+driver-remove-not-found: "No drivers found that meet the conditions"
+driver-remove-summary: "Processed %{total} drivers in total, %{success} successful, %{fail} failed"
+
+# Scan devices
+scan-devices-success: "Device scan completed"
+scan-devices-failed: "Device scan failed"
+
+# Eject virtual CD-ROM of driver-free devices
+ejecting-virtual-drive: "Ejecting virtual CD-ROM of driver-free devices (%{drive})"
+not-found-virtual-drive: "No virtual CD-ROM of driver-free devices found"
+
+# Organize driver
+organize-driver-success: "Driver organization completed"
+organize-driver-failed: "Driver organization failed"
+
+# Create driver
+pack-driver-success: "Driver package creation successful"
+pack-driver-failed: "Driver package creation failed"
