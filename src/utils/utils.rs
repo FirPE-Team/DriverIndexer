@@ -4,16 +4,23 @@ use chrono::Local;
 use glob::MatchOptions;
 use goblin::pe::PE;
 use std::cmp::Ordering;
+use std::ffi::c_void;
 use std::ffi::{OsStr, OsString};
-use std::fs::{read, File, OpenOptions};
+use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::iter::repeat_with;
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
-use std::{env, fs, io};
+use std::{env, fs, io, ptr};
 use walkdir::WalkDir;
-use windows::core::BOOL;
-use windows::Win32::Foundation::{FILETIME, MAX_PATH, SYSTEMTIME};
+use windows::core::{BOOL, GUID, HSTRING, PWSTR};
+use windows::Win32::Foundation::{FILETIME, HANDLE, HWND, MAX_PATH, SYSTEMTIME};
+use windows::Win32::Security::WinTrust::{
+    WinVerifyTrust, WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA,
+    WINTRUST_DATA_0, WINTRUST_DATA_PROVIDER_FLAGS, WINTRUST_FILE_INFO, WTD_CHOICE_FILE,
+    WTD_REVOKE_NONE, WTD_STATEACTION_CLOSE, WTD_STATEACTION_VERIFY, WTD_UICONTEXT_EXECUTE,
+    WTD_UI_NONE,
+};
 use windows::Win32::Storage::FileSystem::{
     GetDiskFreeSpaceExW, GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW,
     VS_FIXEDFILEINFO,
@@ -93,7 +100,7 @@ fn get_parent_pid(pid: u32) -> windows::core::Result<u32> {
         // 全进程快照
         let h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)?;
         if h.is_invalid() {
-            return Err(windows::core::Error::from_win32());
+            return Err(windows::core::Error::from_thread());
         }
         let mut entry = PROCESSENTRY32W {
             dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
@@ -112,7 +119,7 @@ fn get_parent_pid(pid: u32) -> windows::core::Result<u32> {
             }
         }
         let _ = CloseHandle(h);
-        Err(windows::core::Error::from_win32())
+        Err(windows::core::Error::from_thread())
     }
 }
 
@@ -121,7 +128,7 @@ fn get_process_name(pid: u32) -> windows::core::Result<String> {
     unsafe {
         let h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)?;
         if h.is_invalid() {
-            return Err(windows::core::Error::from_win32());
+            return Err(windows::core::Error::from_thread());
         }
         let mut entry = PROCESSENTRY32W {
             dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
@@ -139,7 +146,7 @@ fn get_process_name(pid: u32) -> windows::core::Result<String> {
                     .unwrap_or(MAX_PATH as usize);
                 let name = OsString::from_wide(&entry.szExeFile[..len])
                     .into_string()
-                    .map_err(|_| windows::core::Error::from_win32())?;
+                    .map_err(|_| windows::core::Error::from_thread())?;
                 let _ = CloseHandle(h);
                 return Ok(name);
             }
@@ -148,7 +155,7 @@ fn get_process_name(pid: u32) -> windows::core::Result<String> {
             }
         }
         let _ = CloseHandle(h);
-        Err(windows::core::Error::from_win32())
+        Err(windows::core::Error::from_thread())
     }
 }
 
@@ -233,18 +240,6 @@ pub fn move_dir(src: &Path, dst: &Path) -> io::Result<()> {
     Ok(())
 }
 
-/// 是否为压缩包文件
-pub fn is_archive(file_path: &Path) -> bool {
-    let file_ext = file_path.extension().unwrap().to_str().unwrap_or("");
-    let support_extension = ["7z", "zip", "rar", "cab", "tar", "wim"];
-    for item in support_extension.iter() {
-        if file_ext.eq_ignore_ascii_case(item) {
-            return true;
-        }
-    }
-    false
-}
-
 /// 将 FILETIME 转换为字符串格式（yyyy-MM-dd）
 ///
 /// # 参数
@@ -276,32 +271,26 @@ pub fn filetime_to_string(filetime: &FILETIME) -> Result<String, windows::core::
 /// # 返回值
 /// - `Ok(Ordering)`
 /// - `Err(...)`：失败则返回错误
-pub fn compare_version(version1: &str, version2: &str) -> Result<Ordering> {
-    let ver1: Vec<&str> = version1.split('.').collect();
-    let ver2: Vec<&str> = version2.split('.').collect();
-    let n1 = ver1.len();
-    let n2 = ver2.len();
+pub fn compare_version(version1: &str, version2: &str) -> Ordering {
+    let ver1: Vec<u64> = version1
+        .split('.')
+        .filter_map(|s| s.parse::<u64>().ok())
+        .collect();
+    let ver2: Vec<u64> = version2
+        .split('.')
+        .filter_map(|s| s.parse::<u64>().ok())
+        .collect();
 
-    // 比较版本
-    for i in 0..std::cmp::max(n1, n2) {
-        let i1 = match ver1.get(i) {
-            Some(s) => s
-                .parse::<u32>()
-                .with_context(|| format!("Parse version1 part {} to u32 failed", s))?,
-            None => 0,
-        };
-        let i2 = match ver2.get(i) {
-            Some(s) => s
-                .parse::<u32>()
-                .with_context(|| format!("Parse version2 part {} to u32 failed", s))?,
-            None => 0,
-        };
-        match i1.cmp(&i2) {
+    // 逐位比较
+    for (n1, n2) in ver1.iter().zip(ver2.iter()) {
+        match n1.cmp(n2) {
             Ordering::Equal => continue,
-            non_eq => return Ok(non_eq),
+            ord => return ord,
         }
     }
-    Ok(Ordering::Equal)
+
+    // 如果前缀都一样，长的版本号更大 (e.g. 10.0.1 > 10.0)
+    ver1.len().cmp(&ver2.len())
 }
 
 /// 生成临时文件名
@@ -436,14 +425,14 @@ pub fn get_offline_system_arch(system_path: &Path) -> Result<u16> {
         .join("Windows")
         .join("System32")
         .join("ntoskrnl.exe");
-    let bytes = read(&krnl_path).with_context(|| format!("read {:?}", krnl_path))?;
+    let bytes = fs::read(&krnl_path).with_context(|| format!("read {:?}", krnl_path))?;
     let pe = PE::parse(&bytes).with_context(|| format!("parse {:?}", krnl_path))?;
 
     let machine = pe.header.coff_header.machine;
     Ok(machine)
 }
 
-/// 查找离线系统盘(跳过当前系统盘)
+/// 查找离线系统盘（跳过当前系统盘）
 ///
 /// # 返回值
 /// - `Vec<PathBuf>`: 系统盘列表
@@ -674,49 +663,6 @@ pub fn get_drive_space(drive_path: &Path) -> Option<u64> {
     }
 }
 
-/// 判断指定盘符是否为免驱设备虚拟的CDROM盘符
-///
-/// # 参数
-/// - `drive_path`: 盘符
-///
-/// # 返回值
-/// - `true`: 是
-/// - `false`: 不是
-pub fn is_driver_cd(drive_path: &Path) -> bool {
-    // 判断是否为CDROM
-    if get_drive_type(drive_path) != 5 {
-        return false;
-    }
-
-    // 判断总线是否为USB
-    if get_drive_bus(drive_path) != Some(7) {
-        return false;
-    }
-
-    // 判断容量是否小于32MB
-    if get_drive_space(drive_path).is_some_and(|space| space > 32 * 1024 * 1024) {
-        return false;
-    }
-
-    // 判断是否存在exe驱动安装包
-    if !fs::read_dir(drive_path)
-        .ok()
-        .map(|entries| {
-            entries.flatten().any(|entry| {
-                entry
-                    .path()
-                    .extension()
-                    .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
-            })
-        })
-        .unwrap_or(false)
-    {
-        return false;
-    };
-
-    true
-}
-
 /// 将文件大小格式化为可读字节单位（MiB/KiB）
 ///
 /// # 参数
@@ -736,6 +682,117 @@ pub fn format_bytes(bytes: u64) -> String {
     } else {
         format!("{} B", bytes)
     }
+}
+
+/// 检查 .cat 签名文件是否有效
+pub fn check_catalog_signature(file_path: &Path) -> bool {
+    // 路径预处理
+    if !file_path.exists() {
+        return false;
+    }
+    // 获取绝对路径 (处理 .. 或相对路径)
+    let abs_path = match file_path.canonicalize() {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    let path_hstring = HSTRING::from(abs_path.as_path());
+
+    // 构造 WINTRUST_FILE_INFO
+    let mut file_info = WINTRUST_FILE_INFO {
+        cbStruct: std::mem::size_of::<WINTRUST_FILE_INFO>() as u32,
+        pcwszFilePath: PCWSTR(path_hstring.as_ptr()),
+        // 注意：hFile 必须是 INVALID_HANDLE_VALUE (表示通过路径验证)
+        hFile: INVALID_HANDLE_VALUE,
+        pgKnownSubject: ptr::null_mut(),
+    };
+
+    // 构造 WINTRUST_DATA
+    let mut trust_data = WINTRUST_DATA {
+        cbStruct: std::mem::size_of::<WINTRUST_DATA>() as u32,
+        pPolicyCallbackData: ptr::null_mut(),
+        pSIPClientData: ptr::null_mut(),
+        // UI 设置：不弹窗
+        dwUIChoice: WTD_UI_NONE,
+        // 吊销检查：为了速度暂时禁用 (如需严谨可改为 WTD_REVOKE_WHOLECHAIN)
+        fdwRevocationChecks: WTD_REVOKE_NONE,
+        // 验证目标：文件
+        dwUnionChoice: WTD_CHOICE_FILE,
+        // 绑定 file_info
+        Anonymous: WINTRUST_DATA_0 {
+            pFile: &mut file_info,
+        },
+        // 动作：验证 (Verify)
+        dwStateAction: WTD_STATEACTION_VERIFY,
+        hWVTStateData: HANDLE(ptr::null_mut()),
+        pwszURLReference: PWSTR(ptr::null_mut()),
+        // 默认 Provider Flags
+        dwProvFlags: WINTRUST_DATA_PROVIDER_FLAGS(0),
+        // 上下文：执行文件/驱动
+        dwUIContext: WTD_UICONTEXT_EXECUTE,
+        pSignatureSettings: ptr::null_mut(),
+    };
+
+    // 获取 Action GUID (Generic Verify V2)
+    let mut action_guid: GUID = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+
+    // 第一次调用：执行验证
+    let status = unsafe {
+        WinVerifyTrust(
+            HWND(ptr::null_mut()),
+            &mut action_guid,
+            &mut trust_data as *mut _ as *mut c_void,
+        )
+    };
+
+    // 资源清理 (Close)
+    // 无论第一次成功与否，只要指定了 StateAction，就必须调用 Close 释放 hWVTStateData 分配的内存
+    trust_data.dwStateAction = WTD_STATEACTION_CLOSE;
+
+    unsafe {
+        WinVerifyTrust(
+            HWND(ptr::null_mut()),
+            &mut action_guid,
+            &mut trust_data as *mut _ as *mut c_void,
+        )
+    };
+
+    // 0 表示 ERROR_SUCCESS (签名有效且被信任)
+    status == 0
+}
+
+/// 判断 CAT 文件是否包含 WHQL 签名
+/// 前提：建议先调用 check_catalog_signature 确保签名本身是有效的
+pub fn is_whql_signature(file_path: &Path) -> bool {
+    // 读取文件内容
+    let bytes = match fs::read(file_path) {
+        Ok(b) => b,
+        Err(_) => return false,
+    };
+    // 简单暴力搜索
+
+    let pattern_ascii = b"Microsoft Windows";
+    if bytes
+        .windows(pattern_ascii.len())
+        .any(|window| window == pattern_ascii)
+    {
+        return true;
+    }
+
+    // "Microsoft Windows Hardware Compatibility" 的 UTF-16LE 字节序列
+    let pattern_utf16: &[u8] = &[
+        0x4D, 0x00, 0x69, 0x00, 0x63, 0x00, 0x72, 0x00, 0x6F, 0x00, 0x73, 0x00, 0x6F, 0x00, 0x66,
+        0x00, 0x74, 0x00, 0x20, 0x00, 0x57, 0x00, 0x69, 0x00, 0x6E, 0x00, 0x64, 0x00, 0x6F, 0x00,
+        0x77, 0x00, 0x73, 0x00, 0x20, 0x00, 0x48, 0x00, 0x61, 0x00, 0x72, 0x00, 0x64, 0x00, 0x77,
+        0x00, 0x61, 0x00, 0x72, 0x00, 0x65, 0x00,
+    ];
+    if bytes
+        .windows(pattern_utf16.len())
+        .any(|window| window == pattern_utf16)
+    {
+        return true;
+    }
+
+    false
 }
 
 /// 获取EXE程序的文件版本。

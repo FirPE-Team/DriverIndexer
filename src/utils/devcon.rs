@@ -1,3 +1,4 @@
+pub(crate) use crate::hardware::HardwareInfo;
 use crate::utils::utils::{write_embed_file, String_utils};
 use crate::TEMP_PATH;
 use anyhow::{Context, Result};
@@ -5,28 +6,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use windows_version::OsVersion;
 
-/// 硬件信息
-#[derive(Debug, Clone, Eq)]
-pub struct HardwareInfo {
-    /// 设备实例路径
-    pub(crate) device_instance_path: String,
-    /// 显示名称
-    pub(crate) name: String,
-    /// 硬件ID
-    pub(crate) hardware_id: Vec<String>,
-    /// 兼容ID
-    pub(crate) compatible_id: Vec<String>,
-}
-
-impl PartialEq for HardwareInfo {
-    fn eq(&self, other: &Self) -> bool {
-        self.device_instance_path == other.device_instance_path
-    }
-}
-
 /// Devcon操作类
 /// 如何获取Devcon？
 /// [WDK 下载](https://docs.microsoft.com/zh-cn/windows-hardware/drivers/download-the-wdk)
+///
+/// # 注意
+/// NT5 系统需要使用 devcon-v5.2.3790 版本
 pub struct Devcon {
     devcon_program: PathBuf,
 }
@@ -59,20 +44,16 @@ impl Devcon {
     ///
     /// # 返回值
     /// - `Ok(Vec<HwID>)`: 真实硬件id信息列表
-    pub fn get_hardware_device_info<T1>(&self, drive_class: T1) -> Result<Vec<HardwareInfo>>
-    where
-        T1: Into<Option<String>>,
-    {
-        let drive_class = drive_class.into();
-        let hwid_type = if drive_class.is_some() {
-            format!("={}", &drive_class.unwrap())
-        } else {
-            "*".to_string()
-        };
+    pub fn get_hardware_device_info(&self, drive_class: Option<&str>) -> Result<Vec<HardwareInfo>> {
         let output = Command::new(&self.devcon_program)
             .arg("hwids")
-            .arg(hwid_type)
-            .output()?;
+            .arg(if drive_class.is_some() {
+                format!("={}", &drive_class.unwrap())
+            } else {
+                "*".to_string()
+            })
+            .output()
+            .with_context(|| "get hardware device info failed")?;
 
         let content = String::from_utf8_lossy(&output.stdout);
 
@@ -94,6 +75,7 @@ impl Devcon {
         let content_line = content_line.replace("\r\n", &format!("{}\r\n", DELIMITER));
 
         let mut hwid_list: Vec<HardwareInfo> = Vec::new();
+
         // 通过换行符分割遍历
         for item in content_line.lines() {
             // 获取设备实例路径
@@ -145,15 +127,16 @@ impl Devcon {
     /// 获取有问题的硬件设备信息
     ///
     /// # 参数
-    /// - `hardware_device_info` - 真实硬件id信息
+    /// - `hardware_device_info` - 真实硬件id信息列表
+    /// - `drive_class` 驱动类别（注意：只能获取已安装驱动的设备）
     ///
     /// # 返回值
     /// - `Ok(Vec<HwID>)`: 有问题的硬件id信息列表
     /// - `Err(e)`: 失败则返回错误信息
-    pub fn get_problem_device_info(
-        &self,
-        hardware_device_info: &[HardwareInfo],
-    ) -> Result<Vec<HardwareInfo>> {
+    pub fn get_problem_device_info(&self, drive_class: Option<&str>) -> Result<Vec<HardwareInfo>> {
+        // 获取真实硬件设备信息
+        let hardware_device_info = self.get_hardware_device_info(drive_class)?;
+
         // 获取有问题的硬件设备实例路径
         let problem_device_list = &self
             .get_problem_device_instance_path()
@@ -187,7 +170,8 @@ impl Devcon {
         let output = Command::new(&self.devcon_program)
             .arg("status")
             .arg("*")
-            .output()?;
+            .output()
+            .with_context(|| "get problem device instance path failed")?;
         let content = String::from_utf8_lossy(&output.stdout);
 
         const DELIMITER: &str = "|";
@@ -217,15 +201,15 @@ impl Devcon {
     ///
     /// # 返回值
     /// - `Ok(bool)`: 如果驱动加载成功，则返回 `true`；否则返回 `false`。
-    pub fn install_driver(&self, hwid: &str, inf_path: &Path) -> Result<bool> {
+    pub fn install_driver(&self, hardware_id: &str, inf_path: &Path) -> Result<bool> {
         // 不要用 install 命令
         let output = Command::new(&self.devcon_program)
             .arg("update")
             .arg(inf_path)
-            .arg(hwid)
-            .output()?;
-        let content = String::from_utf8_lossy(&output.stdout);
-        Ok(content.contains("successfully"))
+            .arg(hardware_id)
+            .output()
+            .with_context(|| format!("install driver {} failed", hardware_id))?;
+        Ok(String::from_utf8_lossy(&output.stdout).contains("successfully"))
     }
 
     /// 扫描以发现新的硬件
@@ -233,9 +217,11 @@ impl Devcon {
     /// # 返回值
     /// - `Ok(bool)`: 如果扫描成功，则返回 `true`；否则返回 `false`。
     pub fn rescan(&self) -> Result<bool> {
-        let output = Command::new(&self.devcon_program).arg("rescan").output()?;
-        let content = String::from_utf8_lossy(&output.stdout);
-        Ok(content.contains("completed"))
+        let output = Command::new(&self.devcon_program)
+            .arg("rescan")
+            .output()
+            .with_context(|| "rescan failed")?;
+        Ok(String::from_utf8_lossy(&output.stdout).contains("completed"))
     }
 
     /// 卸载设备
@@ -249,8 +235,8 @@ impl Devcon {
         let output = Command::new(&self.devcon_program)
             .arg("remove")
             .arg(id)
-            .output()?;
-        let content = String::from_utf8_lossy(&output.stdout);
-        Ok(content.contains("were removed"))
+            .output()
+            .with_context(|| format!("remove device {} failed", id))?;
+        Ok(String::from_utf8_lossy(&output.stdout).contains("were removed"))
     }
 }

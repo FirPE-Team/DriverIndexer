@@ -1,0 +1,123 @@
+console:
+  info: "情報"
+  success: "成功"
+  warning: "警告"
+  err: "エラー"
+  debug: "デバッグ"
+
+cmdline_tool_tips: "このプログラムはコマンドラインツールです。ターミナル（cmd.exe、PowerShellなど）で実行してください。"
+temp-create-failed: "一時ディレクトリの作成に失敗しました"
+temp-remove-failed: "一時ディレクトリのクリーンアップに失敗しました"
+
+# テンプレート
+template: "{bin} V{version}\n\n 使用法: {bin}.exe [オプション] [コマンド] [パラメータ]\n\n コマンド:\n {subcommands}\n\n オプション:\n {options}"
+
+# コマンド
+commands:
+  # インデックス作成
+  index: "ドライバーインデックスを作成します。インデックス形式：JSON"
+  info: "ドライバーインデックス情報を出力します"
+  install: "ドライバーをインストールします。圧縮パッケージ内のドライバーを自動的に一致させてインストールします"
+  eject: "ドライバーレスデバイスの仮想ドライブを取り出し、実際のUSBデバイスを認識させます"
+  install-offline: "ハードディスク内のオフラインシステムのドライバーをインストールします"
+  list: "ドライバーを一覧表示します。オンラインシステム、オフラインシステムをサポートします"
+  import: "ドライバーをインポートします。オンラインシステム、オフラインシステムをサポートします"
+  export: "ドライバーをエクスポートします。オンラインシステム、オフラインシステムをサポートします"
+  remove: "ドライバーを削除します。オンラインシステム、オフラインシステムをサポートします"
+  organize: "ドライバーを整理します"
+  pack: "ドライバーパッケージを作成します"
+  scan: "新しいハードウェアをスキャンします"
+  help: "ヘルプ情報を表示します。この情報または指定されたコマンドのヘルプを表示します"
+# オプション
+options:
+  lang: "プログラム言語を設定します"
+  save-index-path: "インデックスファイルの保存場所"
+  package-path: "圧縮パッケージパス"
+  index-path: "インデックスファイルパス"
+  package-password: "圧縮パッケージのパスワードを設定します"
+  match-all-device: "すべてのデバイスを一致させます"
+  missing-only: "不足しているドライバーのみをインストールします"
+  driver-category: "ドライバーカテゴリ"
+  extract_to: "ドライバーを解凍するだけでインストールしません"
+  force: "ドライバーを強制的にインストールします"
+  rename: "ドライバーディレクトリの名前を変更します"
+  system-drive: "システムドライブパス"
+  export-path: "ドライバーエクスポートパス"
+  driver-name: "ドライバー名(inf)"
+  driver-provider: "ドライバープロバイダー"
+  debug: "デバッグモードを有効にします"
+  log-path: "ログファイルパス"
+  help: "ヘルプ情報を表示します"
+  version: "バージョン情報を表示します"
+value-parser:
+  path-not-exist: "パスが存在しません"
+  dir-not-exist: "ディレクトリが存在しません"
+  file-not-exist: "ファイルが存在しません"
+  not-system-path: "システムパスではありません"
+  not-dir: "パスはディレクトリではありません"
+
+# インデックス作成
+create-index-info: "ドライバーインデックスを構築中......"
+no-hardware: "ハードウェア情報が検出されませんでした"
+inf-parse-error: "INF解析エラー"
+index-save-failed: "インデックスファイルの保存に失敗しました"
+no-inf-find: "ドライバー情報が見つかりませんでした"
+total-info: "合計 %{total} 個のドライバーを処理し、成功 %{success} 個、失敗 %{error} 個、ハードウェア情報が未検出 %{blank} 個"
+save-info: "ドライバーインデックスは %{path} に保存されました"
+
+# ドライバーインストール
+driver-install-info: "ドライバーをインストール"
+load-index: "インデックスをロード"
+no-device: "ハードウェア情報の取得に失敗しました"
+found-devices: "処理が必要なデバイスが %{total} 個見つかりました"
+config-parse-failed: "インデックスファイルの解析に失敗しました。インデックスファイルを再生成してください"
+driver-not-match-config: "ドライバーパッケージとインデックスファイルが一致しません。インデックスファイルを再生成してください"
+no-driver-package: "ドライバーパッケージ内にドライバーが検出されませんでした"
+no-found-driver-currently: "現在インストールが必要なドライバーのデバイスが見つかりません"
+install-skipped: "スキップ: %{name} (現在のドライバーは最新またはより良いものです)"
+install-success: "ハードウェア: %{name}\n            デバイス: %{id}\n            カテゴリ: %{class}\n            ドライバー: %{driver}\n            バージョン: %{version}\n            日付: %{date}"
+install-failed: "ハードウェア: %{name}\n            デバイス: %{id}\n            情報: %{info}"
+driver-unzip-failed: "ドライバーの解凍に失敗しました"
+driver-unzip-success: "ドライバーの解凍に成功しました"
+driver-install-failed: "ドライバーのインストールに失敗しました"
+driver-install-success: "ドライバーのインストールに成功しました"
+
+# オフラインドライバーのロード
+install-offline-driver: "オフラインシステムドライバーをインストール (%{path})"
+not-found-offline-system: "オフラインWindowsシステムが見つかりませんでした"
+
+# ドライバーのインポート
+offline-Arch-Err: "オフラインシステムのアーキテクチャの取得に失敗しました"
+driver-import-info: "ドライバーをインポート"
+driver-import-success: "ドライバーのインポートに成功しました"
+driver-import-failed: "ドライバーのインポートに失敗しました"
+driver-import-summary: "合計 %{total} 個のドライバーを処理し、成功 %{success}、失敗 %{fail}"
+
+# ドライバーのエクスポート
+driver-export-success: "ファイル: %{file}\n            カテゴリ: %{class}\n            バージョン: %{version}\n            日付: %{date}"
+driver-export-failed: "ドライバーのエクスポートに失敗しました"
+driver-export-not-found: "条件に一致するドライバーが見つかりませんでした"
+driver-export-summary: "合計 %{total} 個のドライバーを処理し、成功 %{success}、失敗 %{fail}"
+
+# ドライバーの削除
+driver-remove-info: "ドライバーを削除"
+driver-remove-success: "ドライバーの削除に成功しました"
+driver-remove-failed: "ドライバーの削除に失敗しました"
+driver-remove-not-found: "条件に一致するドライバーが見つかりませんでした"
+driver-remove-summary: "合計 %{total} 個のドライバーを処理し、成功 %{success}、失敗 %{fail}"
+
+# デバイスのスキャン
+scan-devices-success: "デバイスのスキャンが完了しました"
+scan-devices-failed: "デバイスのスキャンに失敗しました"
+
+# ドライバーレスデバイスの仮想ドライブを取り出す
+ejecting-virtual-drive: "ドライバーレスデバイスの仮想ドライブを取り出し中 (%{drive})"
+not-found-virtual-drive: "ドライバーレスデバイスの仮想ドライブが見つかりませんでした"
+
+# ドライバーの整理
+organize-driver-success: "ドライバーの整理が完了しました"
+organize-driver-failed: "ドライバーの整理に失敗しました"
+
+# ドライバーの作成
+pack-driver-success: "ドライバーパッケージの作成に成功しました"
+pack-driver-failed: "ドライバーパッケージの作成に失敗しました"

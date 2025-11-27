@@ -1,14 +1,16 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use std::ffi::{c_void, OsStr};
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use windows::core::{GUID, PCWSTR};
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
-    CM_Locate_DevNodeW, CM_Reenumerate_DevNode, SetupCloseInfFile, SetupDiGetClassDescriptionW,
-    SetupFindFirstLineW, SetupFindNextLine, SetupGetFieldCount, SetupGetStringFieldW, SetupOpenInfFileW,
-    CM_LOCATE_DEVNODE_NORMAL, CONFIGRET, INFCONTEXT, INF_STYLE_OLDNT,
-    INF_STYLE_WIN4,
+    CM_Locate_DevNodeW, CM_Reenumerate_DevNode, SetupCloseInfFile, SetupDiClassGuidsFromNameExW
+    , SetupDiGetClassDescriptionW, SetupFindFirstLineW, SetupFindNextLine,
+    SetupGetFieldCount, SetupGetStringFieldW, SetupOpenInfFileW
+    , CM_LOCATE_DEVNODE_NORMAL, CONFIGRET, INFCONTEXT,
+    INF_STYLE_OLDNT, INF_STYLE_WIN4,
 };
+use windows::Win32::Foundation::INVALID_HANDLE_VALUE;
 use windows::Win32::System::Com::CLSIDFromString;
 
 /// 封装Windows SetupAPI函数
@@ -18,19 +20,6 @@ use windows::Win32::System::Com::CLSIDFromString;
 pub struct SetupAPI {}
 
 impl SetupAPI {
-    // https://docs.microsoft.com/zh-cn/windows-hardware/drivers/install/using-device-installation-functions
-    /// 获取硬件信息
-    /// [参考资料](https://docs.microsoft.com/zh-cn/windows/win32/api/setupapi/nf-setupapi-setupdigetclassdevsexa)
-    pub fn _get_device_info() {
-        // let _hdevInfo: *mut c_void = SetupDiGetClassDevsW(null_mut(), PWSTR::NULL, HWND::NULL, DIGCF_ALLCLASSES);
-
-        // if HANDLE::from(hdevInfo) == INVALID_HANDLE_VALUE {
-        //     println!("错误码: {:?}", GetLastError());
-        //     return;
-        // }
-        // println!("{:?}", hdevInfo);
-    }
-
     /// 扫描检测硬件改动 [参考资料](https://www.shuzhiduo.com/A/D854GRg3JE)
     ///
     /// # 返回值
@@ -56,6 +45,64 @@ impl SetupAPI {
         true
     }
 
+    /// 根据类名获取对应的GUID列表
+    ///
+    /// # 参数
+    /// - `class_name(&str)`: 设备类名称
+    ///
+    /// # 返回值
+    /// - `Ok(Vec<GUID>)`: 成功返回GUID列表
+    /// - `Err(e)`: 失败则返回错误信息
+    pub fn get_class_guids_from_name(class_name: &str) -> Result<Vec<GUID>> {
+        let class_name_wide: Vec<u16> = OsStr::new(class_name)
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
+
+        // 先尝试使用一个小的缓冲区
+        let mut guid_list = vec![GUID::default(); 1];
+        let mut returned_count: u32 = 0;
+
+        // 第一次调用，使用小缓冲区获取实际需要的GUID数量
+        let result = unsafe {
+            SetupDiClassGuidsFromNameExW(
+                PCWSTR(class_name_wide.as_ptr()),
+                &mut guid_list,
+                &mut returned_count,
+                None,
+                None,
+            )
+        };
+
+        // 如果缓冲区太小，returned_count会包含实际需要的数量
+        if let Err(e) = result {
+            // 检查错误码是否为缓冲区太小 (ERROR_INSUFFICIENT_BUFFER)
+            if e.code().0 == -2147024774i32 {
+                // 0x8007007A as i32
+                // 使用返回的数量重新分配缓冲区
+                guid_list = vec![GUID::default(); returned_count as usize];
+
+                // 再次调用，这次应该成功
+                unsafe {
+                    SetupDiClassGuidsFromNameExW(
+                        PCWSTR(class_name_wide.as_ptr()),
+                        &mut guid_list,
+                        &mut returned_count,
+                        None,
+                        None,
+                    )
+                }
+                .with_context(|| "Failed to get GUID list")?;
+            } else {
+                return Err(e).with_context(|| "Failed to get required GUID count");
+            }
+        }
+
+        // 调整返回的GUID数量
+        guid_list.truncate(returned_count as usize);
+        Ok(guid_list)
+    }
+
     /// 获取驱动GUID类说明
     ///
     /// # 参数
@@ -75,28 +122,19 @@ impl SetupAPI {
         Ok(String::from_utf16_lossy(&buf[..len]))
     }
 
-    /// 获取驱动GUID类说明-通过字符串
+    /// 根据字符串获取GUID
     ///
     /// # 参数
     /// - `guid_str(&str)`: guid 类，需要使用{}包裹guid字符串
     ///
     /// # 返回值
-    /// - `Ok(String)`: 成功返回类名的描述
+    /// - `Ok(GUID)`: 成功返回GUID
     /// - `Err(e)`: 失败则返回错误信息
-    pub fn get_class_description_from_str(guid_str: &str) -> Result<String> {
+    pub fn get_guid_from_str(guid_str: &str) -> Result<GUID> {
         let guid_wide: Vec<u16> = OsStr::new(guid_str).encode_wide().chain(Some(0)).collect();
-        let guid_raw = unsafe { CLSIDFromString(PCWSTR(guid_wide.as_ptr())) }
+        let guid = unsafe { CLSIDFromString(PCWSTR(guid_wide.as_ptr())) }
             .with_context(|| "CLSIDFromString failed")?;
-
-        let mut buf: [u16; 256] = [0; 256];
-        let mut needed: u32 = 0;
-        unsafe {
-            SetupDiGetClassDescriptionW(&guid_raw, &mut buf, Some(&mut needed))
-                .with_context(|| "Get driver class description failed")?;
-        }
-
-        let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-        Ok(String::from_utf16_lossy(&buf[..len]))
+        Ok(guid)
     }
 
     /// 打开inf文件
@@ -106,15 +144,20 @@ impl SetupAPI {
     ///
     /// # 返回值
     /// - `*mut c_void`: 成功返回inf文件句柄，失败返回`null_mut()`
-    pub fn open_inf_file(inf_path: &Path) -> *mut c_void {
+    pub fn open_inf_file(inf_path: &Path) -> Result<*mut c_void> {
         let inf_wide: Vec<u16> = inf_path.as_os_str().encode_wide().chain(Some(0)).collect();
         unsafe {
-            SetupOpenInfFileW(
+            let handle = SetupOpenInfFileW(
                 PCWSTR(inf_wide.as_ptr()),
                 None,
                 INF_STYLE_OLDNT | INF_STYLE_WIN4,
                 None,
-            )
+            );
+            if handle == INVALID_HANDLE_VALUE.0 {
+                Err(anyhow!("SetupOpenInfFileW failed"))
+            } else {
+                Ok(handle)
+            }
         }
     }
 
@@ -140,16 +183,23 @@ impl SetupAPI {
     pub fn find_first_line(
         inf_handle: *mut c_void,
         section: &str,
-        key: &str,
+        key: Option<&str>,
     ) -> Result<INFCONTEXT> {
         let section_wide: Vec<u16> = OsStr::new(section).encode_wide().chain(Some(0)).collect();
-        let key_wide: Vec<u16> = OsStr::new(key).encode_wide().chain(Some(0)).collect();
+
         let mut context = INFCONTEXT::default();
         unsafe {
             SetupFindFirstLineW(
                 inf_handle,
                 PCWSTR(section_wide.as_ptr()),
-                PCWSTR(key_wide.as_ptr()),
+                match key {
+                    None => PCWSTR::null(),
+                    Some(key) => {
+                        let key_wide: Vec<u16> =
+                            OsStr::new(key).encode_wide().chain(Some(0)).collect();
+                        PCWSTR(key_wide.as_ptr())
+                    }
+                },
                 &mut context,
             )
             .with_context(|| "SetupFindFirstLineW failed")?;
@@ -188,6 +238,13 @@ impl SetupAPI {
         Ok(String::from_utf16_lossy(&buf[..len]))
     }
 
+    /// 查找inf文件中的下一行
+    ///
+    /// # 参数
+    /// - `context(&mut INFCONTEXT)`: inf 文件上下文
+    ///
+    /// # 返回值
+    /// - `Ok(INFCONTEXT)`: 成功返回INFCONTEXT结构体，失败返回错误信息
     pub fn find_next_line(context: &mut INFCONTEXT) -> Result<INFCONTEXT> {
         let mut result = INFCONTEXT::default();
         unsafe {

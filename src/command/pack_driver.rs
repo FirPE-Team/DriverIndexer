@@ -1,5 +1,4 @@
 use crate::command::create_index::create_index;
-use crate::driver_index::DriverIndex;
 use crate::utils::sevenzip::SevenZip;
 use crate::TEMP_PATH;
 use anyhow::{anyhow, Context, Result};
@@ -8,62 +7,57 @@ use bincode::{config, Decode, Encode};
 use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::{env, fs};
 
 /// 缓冲区大小（512KB）
 pub const BUFFER_SIZE: usize = 1024 * 512;
 
+/// 定义魔数
+const MAGIC_SIGNATURE: &[u8; 8] = b"DRV_PKG!";
+
+/// 固定长度：u64(8) + u64(8) + [u8;8](8) = 24
+const FOOTER_SIZE: i64 = 24;
+
 /// 嵌入驱动文件头
 #[derive(Serialize, Deserialize, Encode, Decode, Debug)]
-pub struct EmbedDriverHead {
-    /// 文件头魔数
-    head: Vec<u8>,
-    /// 嵌入驱动大小（单位：字节）
-    size: u64,
-    /// 驱动索引
-    index: DriverIndex,
-    /// 文件尾魔数
-    end: Vec<u8>,
+pub struct EmbedDriverFooter {
+    /// 压缩包的起始偏移量 (相对于文件开头)
+    archive_offset: u64,
+    /// 压缩包的大小
+    archive_size: u64,
+    /// 魔数
+    magic: [u8; 8],
 }
 
-impl EmbedDriverHead {
-    pub fn new(size: u64, index: DriverIndex) -> Self {
-        EmbedDriverHead {
-            head: [
-                vec![0x89].as_slice(),
-                b"EmbedDriver".to_vec().as_slice(),
-                vec![0x0d, 0x0a, 0x1a, 0x0a].as_slice(),
-            ]
-            .concat(),
-            size,
-            index,
-            // 资源文件尾(EDEND)
-            end: [vec![0x45, 0x44, 0x45, 0x4E, 0x44].as_slice()].concat(),
+impl EmbedDriverFooter {
+    /// 创建一个新的嵌入驱动文件头
+    ///
+    /// # 参数
+    /// - `offset` 压缩包的起始偏移量 (相对于文件开头)
+    /// - `size` 压缩包的大小
+    ///
+    /// # 返回值
+    /// 一个新的 `EmbedDriverFooter` 实例
+    pub(crate) fn new(offset: u64, size: u64) -> Self {
+        Self {
+            archive_offset: offset,
+            archive_size: size,
+            magic: *MAGIC_SIGNATURE,
         }
-    }
-
-    /// 获取文件头长度
-    pub fn get_len(&self) -> usize {
-        self.to_bytes().unwrap().len()
-    }
-
-    /// 获取文件头魔数（标识）
-    pub fn get_head(&self) -> &Vec<u8> {
-        &self.head
     }
 
     /// 转换为字节
     pub fn to_bytes(&self) -> Result<Vec<u8>, EncodeError> {
-        let config = config::standard();
+        let config = config::standard().with_fixed_int_encoding();
         bincode::encode_to_vec(self, config)
     }
 
     /// 将字节解析为当前数据
-    pub fn from(data: &[u8]) -> Result<(Self, usize), DecodeError> {
-        let config = config::standard();
-        bincode::decode_from_slice(data, config)
+    pub fn from_bytes(bytes: &[u8]) -> Result<(Self, usize), DecodeError> {
+        let config = config::standard().with_fixed_int_encoding();
+        bincode::decode_from_slice(bytes, config)
     }
 }
 
@@ -84,7 +78,7 @@ pub fn pack_driver_program(driver_path: &Path, out_path: &Path) -> Result<()> {
 
     if driver_path.is_file() {
         // 检查驱动路径是否为驱动包文件
-        if !zip.is_driver_package(&driver_path).unwrap_or(false) {
+        if zip.is_driver_package(&driver_path).is_err() {
             return Err(anyhow!(t!("no-driver-package")));
         }
     } else if driver_path.is_dir() {
@@ -105,8 +99,8 @@ pub fn pack_driver_program(driver_path: &Path, out_path: &Path) -> Result<()> {
         ));
         if zip
             .create_archive(&driver_path, &temp_archive_path)
-            .unwrap_or(false)
-            && !temp_archive_path.exists()
+            .is_err()
+            || !temp_archive_path.exists()
         {
             // 打包失败
             return Err(anyhow!(t!("pack-driver-failed")));
@@ -114,12 +108,15 @@ pub fn pack_driver_program(driver_path: &Path, out_path: &Path) -> Result<()> {
         driver_path = temp_archive_path;
     }
 
-    // 写入主程序
-    fs::copy(env::current_exe().unwrap(), out_path).with_context(|| {
+    // 获取当前程序路径
+    let current_exe = env::current_exe().with_context(|| "Get current exe path failed")?;
+
+    // 复制主程序
+    fs::copy(&current_exe, out_path).with_context(|| {
         format!(
-            "Copy current exe {:?} to {:?} failed",
-            env::current_exe().unwrap(),
-            out_path
+            "Copy current exe {} to {} failed",
+            current_exe.display(),
+            out_path.display()
         )
     })?;
 
@@ -134,18 +131,72 @@ pub fn pack_driver_program(driver_path: &Path, out_path: &Path) -> Result<()> {
     // 缓冲区
     let mut buffer = [0u8; BUFFER_SIZE];
 
+    // 获取偏移量 (Host EXE 的大小)
+    let archive_offset = current_exe
+        .metadata()
+        .with_context(|| "Get current exe metadata failed")?
+        .len();
+
+    // 获取压缩包大小
+    let archive_size = driver_path
+        .metadata()
+        .with_context(|| format!("Get driver file {} metadata failed", driver_path.display()))?
+        .len();
+
     // 循环读取并写入资源文件
     loop {
         let nbytes = source_file
             .read(&mut buffer)
-            .with_context(|| format!("Read driver file {:?} failed", driver_path))?;
+            .with_context(|| format!("Read driver file {} failed", driver_path.display()))?;
         output_file
             .write_all(&buffer[..nbytes])
-            .with_context(|| format!("Write output file {:?} failed", out_path))?;
+            .with_context(|| format!("Write output file {} failed", out_path.display()))?;
         if nbytes < buffer.len() {
             break;
         }
     }
 
+    // 写入驱动包文件头
+    let footer = EmbedDriverFooter::new(archive_offset, archive_size);
+    output_file
+        .write_all(
+            footer
+                .to_bytes()
+                .with_context(|| "Serialize footer failed".to_string())?
+                .as_slice(),
+        )
+        .with_context(|| format!("Write output file {} failed", out_path.display()))?;
+
     Ok(())
+}
+
+/// 检查当前程序是否为内置驱动包
+///
+/// # 返回值
+/// 如果当前程序为内置驱动包，则返回压缩包的起始偏移量；否则返回 `None`。
+pub fn check_if_bundled() -> Option<u64> {
+    // 获取当前执行文件路径
+    let current_exe = env::current_exe().ok()?;
+    let mut file = File::open(&current_exe).ok()?;
+
+    // 移动文件指针到倒数 24 字节的位置
+    // 注意：如果有任何 IO 错误（比如文件太小不足24个字节），直接返回 None
+    if file.seek(SeekFrom::End(-FOOTER_SIZE)).is_err() {
+        return None;
+    }
+
+    // 读取字节
+    let mut buffer = vec![0u8; FOOTER_SIZE as usize];
+    if file.read_exact(&mut buffer).is_err() {
+        return None;
+    }
+
+    if let Ok((footer, _size)) = EmbedDriverFooter::from_bytes(&buffer) {
+        // 校验魔数
+        if &footer.magic == MAGIC_SIGNATURE {
+            return Some(footer.archive_offset);
+        }
+    }
+
+    None
 }

@@ -11,6 +11,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc::channel;
 use std::sync::Arc;
+use std::time::UNIX_EPOCH;
 use threadpool::ThreadPool;
 
 /// 创建索引文件
@@ -51,14 +52,19 @@ pub fn create_index(
     } else {
         // 从文件中创建索引文件
         inf_parent_path = TEMP_PATH.join(drive_path.file_stem().unwrap());
-        // 解压INF文件
-        if !zip.extract_files_from_path(drive_path, password, "*.inf", &inf_parent_path)? {
+        // 解压全部INF文件
+        if let Err(e) = zip.extract_files_from_path(drive_path, password, "*.inf", &inf_parent_path)
+        {
             drop(zip);
-            return Err(anyhow!(t!("driver-unzip-failed")));
+            return Err(anyhow!("{}: {}", t!("driver-unzip-failed"), e));
         }
-        drop(zip);
+        // 解压全部 CAT 文件
+        let _ = zip.extract_files_from_path(drive_path, password, "*.cat", &inf_parent_path);
 
-        inf_list = get_file_list(&inf_parent_path, "*.inf")?;
+        // 从解压目录中获取INF文件列表
+        inf_list =
+            get_file_list(&inf_parent_path, "*.inf").with_context(|| "get inf list failed")?;
+
         // 如果输入的索引路径是相对路径，则令实际实际为驱动包所在路径
         index_path = if save_path.is_relative() {
             drive_path.parent().unwrap().join(save_path)
@@ -90,10 +96,10 @@ pub fn create_index(
 
         // 多线程解析INF文件
         pool.execute(move || {
-            match InfInfo::parse_from_inf(&base_path, &item) {
+            match InfInfo::parse_inf(&base_path, &item) {
                 Ok(info) => {
                     // 判断inf文件是否包含硬件信息
-                    if info.hwid.is_empty() {
+                    if info.hardware.is_empty() {
                         blank_count.fetch_add(1, Ordering::SeqCst);
                         write_console(
                             ConsoleType::Warning,
@@ -115,7 +121,7 @@ pub fn create_index(
                         ConsoleType::Error,
                         &format!(
                             "{}: {}({})",
-                            t!("inf-parsing-err"),
+                            t!("inf-parse-error"),
                             item.to_string_lossy()
                                 .trim_start_matches(&*TEMP_PATH.to_string_lossy()),
                             e
@@ -138,14 +144,29 @@ pub fn create_index(
     // 计算驱动包大小
     let size = drive_path
         .metadata()
-        .with_context(|| format!("get drive path metadata {:?}", drive_path))?
+        .with_context(|| format!("get drive path metadata {}", drive_path.display()))?
         .len();
 
+    // 获取驱动包修改时间戳
+    let timestamp = drive_path
+        .metadata()
+        .with_context(|| format!("get drive path metadata {}", drive_path.display()))?
+        .modified()
+        .with_context(|| format!("get drive path modified {}", drive_path.display()))?
+        .duration_since(UNIX_EPOCH)
+        .with_context(|| {
+            format!(
+                "get drive path duration since unix epoch {}",
+                drive_path.display()
+            )
+        })?
+        .as_secs();
+
     // 创建索引配置文件
-    let config = DriverIndex::new(size, inf_info_list);
+    let config = DriverIndex::new(size, timestamp, inf_info_list);
     let json = config
         .to_json()
-        .with_context(|| format!("serialize config data to json {:?}", config))?;
+        .with_context(|| format!("serialize config data to json {}", index_path.display()))?;
 
     // 保存索引配置文件
     fs::write(&index_path, json).with_context(|| t!("index-save-failed"))?;

@@ -5,9 +5,9 @@ console:
   err: "错误"
   debug: "调试"
 
-cmdline_tool_tips: "这是一个命令行工具，你需要从 cmd.exe 中运行."
+cmdline_tool_tips: "本程序是一个命令行工具，请在终端（如 cmd.exe, PowerShell）中运行。"
 temp-create-failed: "临时目录创建失败"
-temp-remove-failed: "临时目录删除失败"
+temp-remove-failed: "临时目录清理失败"
 
 # 模板
 template: "{bin} V{version}\n\n 用法: {bin}.exe [选项] [命令] [参数]\n\n 命令:\n {subcommands}\n\n 选项:\n {options}"
@@ -15,18 +15,18 @@ template: "{bin} V{version}\n\n 用法: {bin}.exe [选项] [命令] [参数]\n\n
 # 命令
 commands:
   # 创建索引
-  create-index: "创建驱动索引。索引格式：JSON"
-  index-info: "输出驱动索引信息"
-  install-driver: "安装匹配驱动。自动匹配压缩包中的驱动程序，解压并安装"
-  eject-virtual-drive: "弹出免驱设备虚拟光驱以识别真实USB设备"
-  install-offline-driver: "加载硬盘中离线系统内的驱动"
-  list-driver: "列举驱动程序。支持在线系统、离线系统"
-  import-driver: "导入驱动程序。支持在线系统、离线系统"
-  export-driver: "导出驱动程序。支持在线系统、离线系统"
-  remove-driver: "删除驱动程序。支持在线系统、离线系统"
-  organize-driver: "整理驱动程序"
-  pack-driver: "创建驱动程序包"
-  scan-devices: "扫描新硬件"
+  index: "创建驱动索引。索引格式：JSON"
+  info: "输出驱动索引信息"
+  install: "安装驱动程序。自动匹配压缩包中的驱动程序并安装"
+  eject: "弹出免驱设备虚拟光驱以识别真实USB设备"
+  install-offline: "安装硬盘中离线系统内的驱动程序"
+  list: "列举驱动程序。支持在线系统、离线系统"
+  import: "导入驱动程序。支持在线系统、离线系统"
+  export: "导出驱动程序。支持在线系统、离线系统"
+  remove: "删除驱动程序。支持在线系统、离线系统"
+  organize: "整理驱动程序"
+  pack: "创建驱动程序包"
+  scan: "扫描新硬件"
   help: "打印帮助信息。显示此信息或指定命令帮助"
 # 选项
 options:
@@ -36,9 +36,9 @@ options:
   index-path: "索引文件路径"
   package-password: "设置压缩包密码"
   match-all-device: "匹配所有设备"
-  match-device: "匹配本机设备"
+  missing-only: "仅安装缺失的驱动"
   driver-category: "驱动类别"
-  only-unzip: "仅解压驱动程序而不安装"
+  extract_to: "仅解压驱动程序而不安装"
   force: "强制安装驱动程序"
   rename: "重命名驱动目录"
   system-drive: "系统盘路径"
@@ -56,34 +56,35 @@ value-parser:
   not-system-path: "不是系统路径"
   not-dir: "路径不是目录"
 
-
 # 创建索引
-create-index-info: "正在创建驱动索引......"
+create-index-info: "正在建立驱动索引......"
 no-hardware: "未检测到硬件信息"
-inf-parsing-err: "INF解析错误"
+inf-parse-error: "INF解析错误"
 index-save-failed: "索引文件保存失败"
 no-inf-find: "没有找到驱动信息"
 total-info: "共处理 %{total} 个驱动，成功 %{success} 个驱动，失败 %{error} 个驱动，未检测到硬件信息 %{blank} 个驱动"
 save-info: "驱动索引保存在 %{path}"
 
-# 加载驱动
+# 安装驱动
 driver-install-info: "安装驱动"
 load-index: "加载索引"
 no-device: "获取硬件信息失败"
+found-devices: "找到 %{total} 个设备需要处理"
 config-parse-failed: "索引文件解析失败，请重新生成索引文件"
 driver-not-match-config: "驱动程序包与索引文件不匹配，请重新生成索引文件"
 no-driver-package: "在驱动程序包中未检测到驱动程序"
 no-found-driver-currently: "找不到当前需要安装驱动的设备"
+install-skipped: "跳过: %{name} (当前驱动已是最新或更佳)"
 install-success: "硬件: %{name}\n            设备: %{id}\n            类别: %{class}\n            驱动: %{driver}\n            版本: %{version}\n            日期: %{date}"
-install-failed: "硬件: %{name}\n            设备: %{id}"
+install-failed: "硬件: %{name}\n            设备: %{id}\n            信息: %{info}"
 driver-unzip-failed: "驱动程序解压失败"
 driver-unzip-success: "驱动程序解压成功"
 driver-install-failed: "驱动程序安装失败"
 driver-install-success: "驱动程序安装成功"
 
 # 加载离线驱动
-loading-offline-driver: "加载离线系统驱动 (%{path})"
-not-found-offline-system: "没有找到离线系统"
+install-offline-driver: "安装离线系统驱动 (%{path})"
+not-found-offline-system: "没有找到离线 Windows 系统"
 
 # 导入驱动
 offline-Arch-Err: "获取离线系统架构失败"

@@ -1,7 +1,7 @@
 [package]
 name = "DriverIndexer"
 version = "2.0.0"
-authors = ["Fir"]
+authors = ["FirTech"]
 edition = "2024"
 build = "build.rs"
 
@@ -13,24 +13,22 @@ panic = 'abort'
 
 [build-dependencies]
 embed-resource = "3.0.6"
-thunk-rs = "0.3.2"
+thunk-rs = "0.3.5"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
 vc-ltl = "5.2.2"
-clap = { version = "4.5.49", features = ["derive"] }
-glob = "0.3.1"
-chardet = "0.2.4"
-encoding = "0.2"
-serde = { version = "1.0.209", features = ["derive"] }
+clap = { version = "4.5.53", features = ["derive"] }
+glob = "0.3.3"
+serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0"
-rust-embed = "8.7.2"
-lazy_static = "1.4.0"
-console = "0.15.8"
+rust-embed = "8.9.0"
+lazy_static = "1.5.0"
+console = "0.16.1"
 chrono = "0.4"
-anyhow = "1.0.99"
+anyhow = "1.0.100"
 remove_dir_all = "0.7"
-libloading = "0.8.9"
+libloading = "0.9.0"
 fastrand = "2.3.0"
 goblin = "0.10.3"
 walkdir = "2.5.0"
@@ -40,10 +38,20 @@ sys-locale = "0.3.2"
 rust-i18n = "3.1.5"
 bincode = "2.0.1"
 exitcode = "1.1.2"
-
-[dependencies.windows]
-version = "0.61.3"
-features = ["Win32_Globalization", "Win32_Devices_DeviceAndDriverInstallation", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_Security", "Win32_System_Ioctl", "Win32_System_SystemInformation", "Win32_System_Com", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_SystemServices", "Win32_System_Time"]
-
-[dependencies.windows-version]
-version = "0.1"
+windows-version = "0.1"
+windows = { version = "0.62.2", features = [
+    "Win32_Globalization",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_Security",
+    "Win32_System_Ioctl",
+    "Win32_System_SystemInformation",
+    "Win32_System_Com",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Threading",
+    "Win32_System_SystemServices",
+    "Win32_System_Time",
+    "Win32_Security_WinTrust",
+    "Win32_Security_Cryptography"
+] }

@@ -5,11 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] - 2025-11-XX
+## [2.0.0] - 2025-11-27
 
 ### Added
 
 - Driver management, supporting online/offline import/export and viewing
+- Driver index structure, driver signature and other fields
 - Command and options for ejecting driverless device virtual CD-ROM drives
 - Device scan command
 - Command for installing offline system drivers
@@ -20,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Parse INF using the setup API
+- Use the setup API to obtain hardware information
 - Automatically generate an index when drivers and indexes do not match
 - DEBUG option function is now set to debug option; the original DEBUG output log is changed to the log option
 - Update 7-Zip to 25.1.0.0
@@ -27,12 +30,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Improved driver installation by specifying hardware ID parameters (originally INF hardware ID)
+- Improved driving matching algorithm
 - Improved duplicate matching of compatible device information
 - Improved driver matching performance
 - Improved index file fields
 - Improved internal error handling logic (using anyhow)
 - Improved localized text
 - Improved driver category, version, and date case extraction
+
+### Removed
+
+- Devcon program
 
 ## [1.1.0] - 2024-09-01
 

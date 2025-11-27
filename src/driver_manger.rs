@@ -1,6 +1,6 @@
 use crate::driver_index::InfInfo;
+use crate::hardware::enumerate_hardware;
 use crate::utils::console::{write_console, ConsoleType};
-use crate::utils::devcon::Devcon;
 use crate::utils::drvstore::DriverStore;
 use crate::utils::setupapi::SetupAPI;
 use crate::utils::sevenzip::SevenZip;
@@ -244,21 +244,27 @@ impl DriverManger {
 
         // 判断是否为驱动包
         if driver_path.is_file() {
-            if !zip.is_driver_package(driver_path).unwrap_or(false) {
+            if zip.is_driver_package(driver_path).is_err() {
                 return Err(anyhow!(t!("no-driver-package")));
             }
 
             let drivers_path = TEMP_PATH.join(driver_path.file_stem().unwrap());
             if match_device {
                 // 解压全部INF文件
-                if !zip.extract_files_from_path(driver_path, password, "*.inf", &drivers_path)? {
-                    return Err(anyhow!(t!("driver-unzip-failed")));
+                if let Err(e) =
+                    zip.extract_files_from_path(driver_path, password, "*.inf", &drivers_path)
+                {
+                    return Err(anyhow!("{}: {}", t!("driver-unzip-failed"), e));
                 }
+                // 解压全部CAT文件
+                let _ = zip.extract_files_from_path(driver_path, password, "*.cat", &drivers_path);
             } else {
                 // 解压全部驱动文件
-                if !zip.extract_files_from_path(driver_path, password, "*", &drivers_path)? {
-                    return Err(anyhow!(t!("driver-unzip-failed")));
-                };
+                if let Err(e) =
+                    zip.extract_files_from_path(driver_path, password, "*", &drivers_path)
+                {
+                    return Err(anyhow!("{}: {}", t!("driver-unzip-failed"), e));
+                }
             }
             real_driver_path = drivers_path;
         }
@@ -270,10 +276,8 @@ impl DriverManger {
         // 匹配当前设备驱动
         if match_device {
             // 获取真实硬件信息
-            let devcon = Devcon::new().with_context(|| "Initialize devcon failed")?;
-            let hwid_list = devcon
-                .get_hardware_device_info(None)
-                .with_context(|| "get real id info failed")?;
+            let hwid_list =
+                enumerate_hardware(None, false).with_context(|| "get real id info failed")?;
             if hwid_list.is_empty() {
                 return Err(anyhow!(t!("no-device")));
             }
@@ -281,8 +285,8 @@ impl DriverManger {
             // 解析INF文件
             let mut inf_info_list: Vec<InfInfo> = Vec::new();
             for inf_path in &inf_list {
-                if let Ok(current_info) = InfInfo::parse_from_inf(&real_driver_path, inf_path)
-                    && !current_info.hwid.is_empty()
+                if let Ok(current_info) = InfInfo::parse_inf(&real_driver_path, inf_path)
+                    && !current_info.hardware.is_empty()
                 {
                     inf_info_list.push(current_info.clone());
                 }
@@ -299,16 +303,16 @@ impl DriverManger {
             for (_hardware, infInfo) in match_hardware_and_driver.iter() {
                 // 仅匹配第一个最佳的驱动
                 if let Some(InfInfo) = infInfo.first() {
-                    if !zip
-                        .extract_files_from_path(
-                            driver_path,
-                            password,
-                            &InfInfo.path,
-                            &real_driver_path,
-                        )
-                        .with_context(|| "extract driver file failed")?
-                    {
-                        write_console(ConsoleType::Error, &t!("driver-unzip-failed"));
+                    if let Err(e) = zip.extract_files_from_path(
+                        driver_path,
+                        password,
+                        &InfInfo.path,
+                        &real_driver_path,
+                    ) {
+                        write_console(
+                            ConsoleType::Error,
+                            &format!("{}: {}", t!("driver-unzip-failed"), e),
+                        );
                         continue;
                     }
                     inf_list.push(real_driver_path.join(InfInfo.path.clone()));

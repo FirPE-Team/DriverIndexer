@@ -1,0 +1,123 @@
+console:
+  info: "정보"
+  success: "성공"
+  warning: "경고"
+  err: "오류"
+  debug: "디버그"
+
+cmdline_tool_tips: "이 프로그램은 명령줄 도구입니다. 터미널(cmd.exe, PowerShell 등)에서 실행하십시오."
+temp-create-failed: "임시 디렉토리 생성에 실패했습니다"
+temp-remove-failed: "임시 디렉토리 정리에 실패했습니다"
+
+# 템플릿
+template: "{bin} V{version}\n\n 사용법: {bin}.exe [옵션] [명령] [매개변수]\n\n 명령:\n {subcommands}\n\n 옵션:\n {options}"
+
+# 명령
+commands:
+  # 인덱스 생성
+  index: "드라이버 인덱스를 생성합니다. 인덱스 형식: JSON"
+  info: "드라이버 인덱스 정보를 출력합니다"
+  install: "드라이버를 설치합니다. 압축 패키지의 드라이버를 자동으로 일치시켜 설치합니다"
+  eject: "드라이버 없는 장치의 가상 드라이브를 꺼내 실제 USB 장치를 인식하게 합니다"
+  install-offline: "하드 디스크 내 오프라인 시스템의 드라이버를 설치합니다"
+  list: "드라이버를 나열합니다. 온라인 시스템, 오프라인 시스템을 지원합니다"
+  import: "드라이버를 가져옵니다. 온라인 시스템, 오프라인 시스템을 지원합니다"
+  export: "드라이버를 내보냅니다. 온라인 시스템, 오프라인 시스템을 지원합니다"
+  remove: "드라이버를 삭제합니다. 온라인 시스템, 오프라인 시스템을 지원합니다"
+  organize: "드라이버를 정리합니다"
+  pack: "드라이버 패키지를 생성합니다"
+  scan: "새 하드웨어를 스캔합니다"
+  help: "도움말 정보를 출력합니다. 이 정보 또는 지정된 명령의 도움말을 표시합니다"
+# 옵션
+options:
+  lang: "프로그램 언어를 설정합니다"
+  save-index-path: "인덱스 파일 저장 위치"
+  package-path: "압축 패키지 경로"
+  index-path: "인덱스 파일 경로"
+  package-password: "압축 패키지 암호를 설정합니다"
+  match-all-device: "모든 장치를 일치시킵니다"
+  missing-only: "누락된 드라이버만 설치합니다"
+  driver-category: "드라이버 카테고리"
+  extract_to: "드라이버를 압축 해제만 하고 설치하지 않습니다"
+  force: "드라이버를 강제로 설치합니다"
+  rename: "드라이버 디렉토리 이름을 변경합니다"
+  system-drive: "시스템 드라이브 경로"
+  export-path: "드라이버 내보내기 경로"
+  driver-name: "드라이버 이름(inf)"
+  driver-provider: "드라이버 공급자"
+  debug: "디버그 모드를 활성화합니다"
+  log-path: "로그 파일 경로"
+  help: "도움말 정보를 출력합니다"
+  version: "버전 정보를 출력합니다"
+value-parser:
+  path-not-exist: "경로가 존재하지 않습니다"
+  dir-not-exist: "디렉토리가 존재하지 않습니다"
+  file-not-exist: "파일이 존재하지 않습니다"
+  not-system-path: "시스템 경로가 아닙니다"
+  not-dir: "경로가 디렉토리가 아닙니다"
+
+# 인덱스 생성
+create-index-info: "드라이버 인덱스를 구축 중......"
+no-hardware: "하드웨어 정보가 감지되지 않았습니다"
+inf-parse-error: "INF 파싱 오류"
+index-save-failed: "인덱스 파일 저장에 실패했습니다"
+no-inf-find: "드라이버 정보를 찾을 수 없습니다"
+total-info: "총 %{total}개 드라이버를 처리했으며, 성공 %{success}개, 실패 %{error}개, 하드웨어 정보 미감지 %{blank}개"
+save-info: "드라이버 인덱스가 %{path}에 저장되었습니다"
+
+# 드라이버 설치
+driver-install-info: "드라이버 설치"
+load-index: "인덱스 로드"
+no-device: "하드웨어 정보 가져오기에 실패했습니다"
+found-devices: "처리해야 할 장치가 %{total}개 발견되었습니다"
+config-parse-failed: "인덱스 파일 파싱에 실패했습니다. 인덱스 파일을 다시 생성하십시오"
+driver-not-match-config: "드라이버 패키지와 인덱스 파일이 일치하지 않습니다. 인덱스 파일을 다시 생성하십시오"
+no-driver-package: "드라이버 패키지에서 드라이버가 감지되지 않았습니다"
+no-found-driver-currently: "현재 설치해야 할 드라이버의 장치를 찾을 수 없습니다"
+install-skipped: "건너뛰기: %{name} (현재 드라이버가 최신이거나 더 좋은 버전입니다)"
+install-success: "하드웨어: %{name}\n            장치: %{id}\n            카테고리: %{class}\n            드라이버: %{driver}\n            버전: %{version}\n            날짜: %{date}"
+install-failed: "하드웨어: %{name}\n            장치: %{id}\n            정보: %{info}"
+driver-unzip-failed: "드라이버 압축 해제에 실패했습니다"
+driver-unzip-success: "드라이버 압축 해제에 성공했습니다"
+driver-install-failed: "드라이버 설치에 실패했습니다"
+driver-install-success: "드라이버 설치에 성공했습니다"
+
+# 오프라인 드라이버 로드
+install-offline-driver: "오프라인 시스템 드라이버 설치 (%{path})"
+not-found-offline-system: "오프라인 Windows 시스템을 찾을 수 없습니다"
+
+# 드라이버 가져오기
+offline-Arch-Err: "오프라인 시스템 아키텍처 가져오기에 실패했습니다"
+driver-import-info: "드라이버 가져오기"
+driver-import-success: "드라이버 가져오기에 성공했습니다"
+driver-import-failed: "드라이버 가져오기에 실패했습니다"
+driver-import-summary: "총 %{total}개 드라이버를 처리했으며, 성공 %{success}개, 실패 %{fail}개"
+
+# 드라이버 내보내기
+driver-export-success: "파일: %{file}\n            카테고리: %{class}\n            버전: %{version}\n            날짜: %{date}"
+driver-export-failed: "드라이버 내보내기에 실패했습니다"
+driver-export-not-found: "조건에 맞는 드라이버를 찾을 수 없습니다"
+driver-export-summary: "총 %{total}개 드라이버를 처리했으며, 성공 %{success}개, 실패 %{fail}개"
+
+# 드라이버 삭제
+driver-remove-info: "드라이버 삭제"
+driver-remove-success: "드라이버 삭제에 성공했습니다"
+driver-remove-failed: "드라이버 삭제에 실패했습니다"
+driver-remove-not-found: "조건에 맞는 드라이버를 찾을 수 없습니다"
+driver-remove-summary: "총 %{total}개 드라이버를 처리했으며, 성공 %{success}개, 실패 %{fail}개"
+
+# 장치 스캔
+scan-devices-success: "장치 스캔이 완료되었습니다"
+scan-devices-failed: "장치 스캔에 실패했습니다"
+
+# 드라이버 없는 장치의 가상 드라이브 꺼내기
+ejecting-virtual-drive: "드라이버 없는 장치의 가상 드라이브 꺼내는 중 (%{drive})"
+not-found-virtual-drive: "드라이버 없는 장치의 가상 드라이브를 찾을 수 없습니다"
+
+# 드라이버 정리
+organize-driver-success: "드라이버 정리가 완료되었습니다"
+organize-driver-failed: "드라이버 정리에 실패했습니다"
+
+# 드라이버 생성
+pack-driver-success: "드라이버 패키지 생성에 성공했습니다"
+pack-driver-failed: "드라이버 패키지 생성에 실패했습니다"

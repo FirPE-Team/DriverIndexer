@@ -12,17 +12,17 @@ mod cli;
 mod command;
 mod driver_index;
 mod driver_manger;
+mod hardware;
 mod tests;
 mod utils;
 
 use crate::cli::Cli;
 use crate::cli::Command;
-use crate::command::DriverInstaller;
+use crate::command::{check_if_bundled, DriverInstaller};
 use crate::driver_index::DriverIndex;
 use crate::driver_manger::DriverManger;
 use crate::utils::console::{write_console, ConsoleType};
 use crate::utils::setupapi::SetupAPI;
-use crate::utils::sevenzip::SevenZip;
 use crate::utils::utils::{get_file_list, get_temp_name, launched_from_explorer};
 use anyhow::{anyhow, Context};
 use clap::Parser;
@@ -32,11 +32,11 @@ use rust_i18n::{set_locale, t};
 use std::env::temp_dir;
 use std::fs::create_dir_all;
 use std::path::PathBuf;
+use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use std::thread::sleep;
 use std::time::Duration;
-use std::{env, process};
 use sys_locale::get_locale;
 
 // 设置静态资源: x64平台
@@ -70,36 +70,30 @@ fn main() {
     match system_locale.as_str() {
         "zh-CN" => set_locale("zh-CN"),
         "zh-TW" => set_locale("zh-TW"),
+        "ja-JP" => set_locale("ja-JP"),
+        "ko-KR" => set_locale("ko-KR"),
         _ => set_locale("en"),
     };
 
-    // 创建临时目录
-    if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
-        write_console(ConsoleType::Error, &t!("temp-create-failed"));
-        process::exit(exitcode::IOERR);
-    }
-
     // 检测到当前程序内嵌驱动包时则自动加载驱动
-    if env::args().len() <= 1 {
-        let zip = SevenZip::new().expect("Initialize 7z Failed");
-        if zip
-            .is_driver_package(&env::current_exe().expect("Get Current Executable Path Failed"))
-            .unwrap_or(false)
-        {
-            let driver_loader = DriverInstaller::new();
-            let result = driver_loader.load_self_driver_program();
-            if TEMP_PATH.exists()
-                && let Err(e) = remove_dir_all(&*TEMP_PATH)
-            {
-                write_console(
-                    ConsoleType::Warning,
-                    &format!("{}: {}", t!("temp-remove-failed"), e),
-                );
-            }
-            process::exit(if result.is_ok() { 0 } else { 1 });
-        } else {
-            remove_dir_all(&*TEMP_PATH).ok();
+    if check_if_bundled().is_some() {
+        // 创建临时目录
+        if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
+            write_console(ConsoleType::Error, &t!("temp-create-failed"));
+            process::exit(exitcode::IOERR);
         }
+
+        let driver_loader = DriverInstaller::new();
+        let result = driver_loader.load_self_driver_program();
+        if TEMP_PATH.exists()
+            && let Err(e) = remove_dir_all(&*TEMP_PATH)
+        {
+            write_console(
+                ConsoleType::Warning,
+                &format!("{}: {}", t!("temp-remove-failed"), e),
+            );
+        }
+        process::exit(if result.is_ok() { 0 } else { 1 });
     }
 
     // 判断是否从资源管理器启动
@@ -125,6 +119,8 @@ fn main() {
             cli::Language::En => "en",
             cli::Language::ZhCn => "zh-CN",
             cli::Language::ZhTw => "zh-TW",
+            cli::Language::JaJp => "ja-JP",
+            cli::Language::KoKr => "ko-KR",
         });
     }
 
@@ -158,11 +154,17 @@ fn main() {
 fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
     match &cli.command {
         // 创建索引
-        Command::CreateIndex {
+        Command::Index {
             driver_path,
             index_path,
             password,
         } => {
+            // 创建临时目录
+            if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
+                write_console(ConsoleType::Error, &t!("temp-create-failed"));
+                process::exit(exitcode::IOERR);
+            }
+
             let config_path = if let Some(index_path) = index_path {
                 index_path
             } else {
@@ -205,7 +207,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         }
 
         // 索引信息
-        Command::IndexInfo { index_path } => {
+        Command::Info { index_path } => {
             let driver_index =
                 DriverIndex::from_json(index_path).with_context(|| "Parse driver index failed")?;
             println!("{}", driver_index.get_driver_index_info());
@@ -213,24 +215,22 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         }
 
         // 加载驱动程序
-        Command::InstallDriver {
+        Command::Install {
             driver_path: drive_path,
             index_path,
             password,
-            match_all,
+            missing_only,
             class,
-            extract_path,
-            eject_virtual_driver,
+            extract_to: extract_path,
             force,
         } => {
-            let driver_loader = DriverInstaller::new();
-
-            // 弹出免驱设备虚拟光驱
-            if *eject_virtual_driver {
-                command::eject_virtual_drive()
-                    .with_context(|| "Eject driver CD failed")
-                    .ok();
+            // 创建临时目录
+            if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
+                write_console(ConsoleType::Error, &t!("temp-create-failed"));
+                process::exit(exitcode::IOERR);
             }
+
+            let driver_loader = DriverInstaller::new();
 
             // 处理通配符
             let drive_name = drive_path
@@ -295,7 +295,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                             drive_path_item,
                             password.as_deref(),
                             index.as_deref(),
-                            *match_all,
+                            *missing_only,
                             class.as_deref(),
                             extract_path.as_deref(),
                             *force,
@@ -318,7 +318,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                     drive_path,
                     password.as_deref(),
                     index_path.as_deref(),
-                    *match_all,
+                    *missing_only,
                     class.as_deref(),
                     extract_path.as_deref(),
                     *force,
@@ -330,15 +330,21 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         }
 
         // 加载离线驱动程序
-        Command::InstallOfflineDriver {
+        Command::InstallOffline {
             system_drive,
-            match_all,
+            missing_only,
             class,
         } => {
+            // 创建临时目录
+            if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
+                write_console(ConsoleType::Error, &t!("temp-create-failed"));
+                process::exit(exitcode::IOERR);
+            }
+
             let driver_loader = DriverInstaller::new();
             match driver_loader.load_offline_driver(
                 system_drive.as_deref(),
-                *match_all,
+                *missing_only,
                 class.as_deref(),
             ) {
                 Ok(_) => Ok(()),
@@ -350,12 +356,18 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         }
 
         // 导入驱动程序
-        Command::ImportDriver {
+        Command::Import {
             system_drive,
             driver_path: drive_path,
             password,
             match_all,
         } => {
+            // 创建临时目录
+            if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
+                write_console(ConsoleType::Error, &t!("temp-create-failed"));
+                process::exit(exitcode::IOERR);
+            }
+
             // 处理通配符
             let drive_name = drive_path.file_name().unwrap().to_str().unwrap();
             let driver_manger = DriverManger::new(system_drive)?;
@@ -437,13 +449,19 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         }
 
         // 导出驱动程序
-        Command::ExportDriver {
+        Command::Export {
             system_drive,
             export_path,
             inf,
             class,
             provider,
         } => {
+            // 创建临时目录
+            if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
+                write_console(ConsoleType::Error, &t!("temp-create-failed"));
+                process::exit(exitcode::IOERR);
+            }
+
             let driver_manger = DriverManger::new(system_drive)?;
             match driver_manger.export_driver(
                 system_drive,
@@ -472,13 +490,19 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         }
 
         // 卸载驱动程序
-        Command::RemoveDriver {
+        Command::Remove {
             system_drive,
             inf,
             class,
             provider,
             all,
         } => {
+            // 创建临时目录
+            if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
+                write_console(ConsoleType::Error, &t!("temp-create-failed"));
+                process::exit(exitcode::IOERR);
+            }
+
             let driver_manger = DriverManger::new(system_drive)?;
             match driver_manger.remove_driver(
                 system_drive,
@@ -508,7 +532,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         }
 
         // 列举驱动程序
-        Command::ListDriver {
+        Command::List {
             system_drive,
             class,
             provider,
@@ -525,7 +549,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         }
 
         // 分类驱动程序
-        Command::OrganizeDriver {
+        Command::Organize {
             drive_path,
             export_path,
             rename: rename_driver,
@@ -541,22 +565,30 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         },
 
         // 创建驱动程序
-        Command::PackDriver {
+        Command::Pack {
             drive_path,
             program_path,
-        } => match command::pack_driver_program(drive_path, program_path) {
-            Ok(_) => {
-                write_console(ConsoleType::Success, &t!("pack-driver-success"));
-                Ok(())
+        } => {
+            // 创建临时目录
+            if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
+                write_console(ConsoleType::Error, &t!("temp-create-failed"));
+                process::exit(exitcode::IOERR);
             }
-            Err(e) => {
-                write_console(ConsoleType::Error, &e.to_string());
-                Err(e)
+
+            match command::pack_driver_program(drive_path, program_path) {
+                Ok(_) => {
+                    write_console(ConsoleType::Success, &t!("pack-driver-success"));
+                    Ok(())
+                }
+                Err(e) => {
+                    write_console(ConsoleType::Error, &e.to_string());
+                    Err(e)
+                }
             }
-        },
+        }
 
         // 扫描设备子命令
-        Command::ScanDevices => match SetupAPI::rescan() {
+        Command::Scan => match SetupAPI::rescan() {
             true => {
                 write_console(ConsoleType::Success, &t!("scan-devices-success"));
                 Ok(())
@@ -568,7 +600,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         },
 
         // 卸载驱动CD
-        Command::EjectVirtualDrive => match command::eject_virtual_drive() {
+        Command::Eject => match command::eject_virtual_drive() {
             Ok(_) => Ok(()),
             Err(e) => {
                 write_console(ConsoleType::Error, &e.to_string());

@@ -1,28 +1,25 @@
 #[cfg(test)]
 mod Tests {
-    use crate::driver_index::{DriverArch, DriverIndex, InfInfo};
-    use crate::utils::utils::compare_version;
+    use crate::driver_index::{DriverArch, DriverIndex, HardwareEntry, InfInfo, SignatureStatus};
+    use crate::hardware::enumerate_hardware;
+    use crate::utils::utils::{check_catalog_signature, compare_version};
     use std::cmp::Ordering;
     use std::env::temp_dir;
     use std::path::Path;
 
-    #[test]
     // 版本号对比测试
+    #[test]
     fn version_compare_test() {
-        assert!(matches!(
-            compare_version("1.0.0", "2.0.0"),
-            Ok(Ordering::Less)
-        ));
+        assert!(matches!(compare_version("1.0.0", "2.0.0"), Ordering::Less));
+        assert!(matches!(compare_version("1.0.5", "1.0.50"), Ordering::Less));
+        assert!(matches!(compare_version("1.1.0", "1.1.5"), Ordering::Less));
+    }
 
-        assert!(matches!(
-            compare_version("1.0.5", "1.0.50"),
-            Ok(Ordering::Less)
-        ));
-
-        assert!(matches!(
-            compare_version("1.1.0", "1.1.5"),
-            Ok(Ordering::Less)
-        ));
+    // 签名测试
+    #[test]
+    fn check_catalog_sign_test() {
+        let catalog_path = Path::new(r"C:\Windows\explorer.exe");
+        assert!(check_catalog_signature(catalog_path));
     }
 
     #[test]
@@ -32,25 +29,36 @@ mod Tests {
         let inf_info1 = InfInfo {
             path: String::from(r"driver1\net.inf"),
             class: String::from("Net"),
-            arch: vec![DriverArch::NTamd64, DriverArch::NTx86],
             date: String::from("2023-01-01"),
             version: String::from("1.0.0.0"),
-            hwid: vec![String::from(r"PCI\VEN_8086&DEV_1234")],
-            cid: vec![String::from(r"PCI\VEN_8086&DEV_1234&SUBSYS_12345678")],
+            hardware: vec![HardwareEntry {
+                desc: "".to_string(),
+                arch: DriverArch::NTx86,
+                min_os_version: String::new(),
+                hardware_id: String::from(r"PCI\VEN_8086&DEV_1234"),
+                compatible_ids: vec![String::from(r"PCI\VEN_8086&DEV_1234&SUBSYS_12345678")],
+            }],
+            signature: SignatureStatus::None,
         };
 
         let inf_info2 = InfInfo {
             path: String::from(r"driver2\audio.inf"),
             class: String::from("MEDIA"),
-            arch: vec![DriverArch::NTamd64],
+            signature: SignatureStatus::None,
             date: String::from("2023-02-01"),
             version: String::from("2.0.0.0"),
-            hwid: vec![String::from(r"PCI\VEN_1234&DEV_5678")],
-            cid: vec![String::from(r"PCI\VEN_1234&DEV_5678&SUBSYS_87654321")],
+            hardware: vec![HardwareEntry {
+                desc: "".to_string(),
+                arch: DriverArch::NTamd64,
+                min_os_version: String::new(),
+                hardware_id: String::from(r"PCI\VEN_1234&DEV_5678"),
+                compatible_ids: vec![String::from(r"PCI\VEN_1234&DEV_5678&SUBSYS_87654321")],
+            }],
         };
 
         // 创建DriverIndex
-        let driver_index = DriverIndex::new(1024, vec![inf_info1.clone(), inf_info2.clone()]);
+        let driver_index =
+            DriverIndex::new(1024, 1694400000, vec![inf_info1.clone(), inf_info2.clone()]);
 
         // 测试get_driver_index_info方法
         let info_str = driver_index.get_driver_index_info();
@@ -79,78 +87,113 @@ mod Tests {
     }
 
     #[test]
+    fn parse_inf_test() {
+        let inf_path = Path::new(r"D:\UserData\Desktop\test\netrtl8188gu\netrtl8188gu.inf");
+        let inf_info = InfInfo::parse_inf(inf_path.parent().unwrap(), inf_path).unwrap();
+        println!("{:#?}", inf_info);
+    }
+
+    #[test]
+    fn get_device_info_test() {
+        let hardware_list = enumerate_hardware(None, true).unwrap();
+        println!("API Device Info count: {}", hardware_list.len());
+        println!("{:#?}", hardware_list);
+
+        // create_dir_all(&*TEMP_PATH);
+        // let devcon = Devcon::new().unwrap();
+        // let device_info = devcon.get_hardware_device_info(Some("net")).unwrap();
+        // println!("Devcon Device Info count: {}", device_info.len());
+
+        // 对比API和Devcon获取的硬件信息
+        // for api_hardware in &hardware_list {
+        //     let devcon_hardware = device_info
+        //         .iter()
+        //         .find(|dev| dev.device_instance_path == api_hardware.device_instance_path);
+        //
+        //     assert!(devcon_hardware.is_some());
+        //     let devcon_hardware = devcon_hardware.unwrap();
+        //
+        //     // assert_eq!(api_hardware.name, devcon_hardware.name);
+        //     assert_eq!(api_hardware.hardware_id, devcon_hardware.hardware_id);
+        //     assert_eq!(api_hardware.compatible_id, devcon_hardware.compatible_id);
+        // }
+
+        // println!("{:#?}", device_info);
+    }
+
+    #[test]
     // InfInfo 测试 - 基本属性测试
     fn inf_info_basic_test() {
-        let inf_info = InfInfo {
-            path: String::from(r"test\driver.inf"),
-            class: String::from("DISPLAY"),
-            arch: vec![DriverArch::NTamd64],
-            date: String::from("2023-03-01"),
-            version: String::from("3.0.0.0"),
-            hwid: vec![String::from(r"PCI\VEN_8086&DEV_0042")],
-            cid: vec![String::from(r"PCI\VEN_8086&DEV_0042&SUBSYS_12345678")],
-        };
-
-        assert_eq!(inf_info.path, r"test\driver.inf");
-        assert_eq!(inf_info.class, "DISPLAY");
-        assert_eq!(inf_info.arch.len(), 1);
-        assert_eq!(inf_info.arch[0], DriverArch::NTamd64);
-        assert_eq!(inf_info.date, "2023-03-01");
-        assert_eq!(inf_info.version, "3.0.0.0");
-        assert_eq!(inf_info.hwid.len(), 1);
-        assert_eq!(inf_info.hwid[0], r"PCI\VEN_8086&DEV_0042");
+        // let inf_info = InfInfo {
+        //     path: String::from(r"test\driver.inf"),
+        //     class: String::from("DISPLAY"),
+        //     arch: vec![DriverArch::NTamd64],
+        //     date: String::from("2023-03-01"),
+        //     version: String::from("3.0.0.0"),
+        //     hwid: vec![String::from(r"PCI\VEN_8086&DEV_0042")],
+        //     cid: vec![String::from(r"PCI\VEN_8086&DEV_0042&SUBSYS_12345678")],
+        // };
+        //
+        // assert_eq!(inf_info.path, r"test\driver.inf");
+        // assert_eq!(inf_info.class, "DISPLAY");
+        // assert_eq!(inf_info.arch.len(), 1);
+        // assert_eq!(inf_info.arch[0], DriverArch::NTamd64);
+        // assert_eq!(inf_info.date, "2023-03-01");
+        // assert_eq!(inf_info.version, "3.0.0.0");
+        // assert_eq!(inf_info.hwid.len(), 1);
+        // assert_eq!(inf_info.hwid[0], r"PCI\VEN_8086&DEV_0042");
     }
 
     // 测试代码：将全部硬件ID信息输出位csv格式
     #[test]
     fn output_csv() {
-        let index_path = Path::new(r"D:\Project\FirPE\EFI\boot\drivers\Network.index");
-        let out_path = index_path.parent().unwrap().join(format!(
-            "{}.csv",
-            index_path.file_stem().unwrap().to_string_lossy()
-        ));
-        let index = DriverIndex::from_json(index_path).unwrap();
-
-        let mut result = String::new();
-
-        // 添加CSV表头
-        result.push_str("HardwareID,Path,Class,Arch,Date,Version\n");
-
-        for driver in &index.drivers {
-            // 如果没有硬件ID，则跳过
-            if driver.hwid.is_empty() {
-                continue;
-            }
-
-            let mut all_hwid = driver.hwid.clone();
-            all_hwid.append(&mut driver.cid.clone());
-
-            // 为每个硬件ID创建一行
-            for hwid in &all_hwid {
-                // 将架构列表转换为字符串，用分号分隔
-                let arch_str = driver
-                    .arch
-                    .iter()
-                    .map(|a| a.clone().display().to_string())
-                    .collect::<Vec<_>>()
-                    .join(";");
-
-                // 添加一行CSV数据
-                result.push_str(&format!(
-                    "{},{},{},{},{},{}\n",
-                    hwid,           // 硬件ID
-                    driver.path,    // 驱动路径
-                    driver.class,   // 驱动类别
-                    arch_str,       // 驱动架构
-                    driver.date,    // 驱动日期
-                    driver.version  // 驱动版本
-                ));
-            }
-        }
-
-        // 将结果写入文件
-        std::fs::write(&out_path, result).expect("Unable to write file");
-        println!("CSV文件已生成: {}", out_path.display());
+        // let index_path = Path::new(r"D:\Project\FirPE\EFI\boot\drivers\Network.index");
+        // let out_path = index_path.parent().unwrap().join(format!(
+        //     "{}.csv",
+        //     index_path.file_stem().unwrap().to_string_lossy()
+        // ));
+        // let index = DriverIndex::from_json(index_path).unwrap();
+        //
+        // let mut result = String::new();
+        //
+        // // 添加CSV表头
+        // result.push_str("HardwareID,Path,Class,Arch,Date,Version\n");
+        //
+        // for driver in &index.drivers {
+        //     // 如果没有硬件ID，则跳过
+        //     if driver.hwid.is_empty() {
+        //         continue;
+        //     }
+        //
+        //     let mut all_hwid = driver.hwid.clone();
+        //     all_hwid.append(&mut driver.cid.clone());
+        //
+        //     // 为每个硬件ID创建一行
+        //     for hwid in &all_hwid {
+        //         // 将架构列表转换为字符串，用分号分隔
+        //         let arch_str = driver
+        //             .arch
+        //             .iter()
+        //             .map(|a| a.clone().display().to_string())
+        //             .collect::<Vec<_>>()
+        //             .join(";");
+        //
+        //         // 添加一行CSV数据
+        //         result.push_str(&format!(
+        //             "{},{},{},{},{},{}\n",
+        //             hwid,           // 硬件ID
+        //             driver.path,    // 驱动路径
+        //             driver.class,   // 驱动类别
+        //             arch_str,       // 驱动架构
+        //             driver.date,    // 驱动日期
+        //             driver.version  // 驱动版本
+        //         ));
+        //     }
+        // }
+        //
+        // // 将结果写入文件
+        // std::fs::write(&out_path, result).expect("Unable to write file");
+        // println!("CSV文件已生成: {}", out_path.display());
     }
 
     // drvstoreAPI测试

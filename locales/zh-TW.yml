@@ -15,18 +15,18 @@ template: "{bin} V{version}\n\n 用法: {bin}.exe [選項] [命令] [參數]\n\n
 # 命令
 commands:
   # 建立索引
-  create-index: "建立驅動索引。索引格式：JSON"
-  index-info: "輸出驅動索引資訊"
-  install-driver: "安裝匹配驅動。自動匹配壓縮包中的驅動程式，解壓縮並安裝"
-  eject-virtual-drive: "彈出免驅動裝置虛擬光碟機以辨識真實USB裝置"
-  install-offline-driver: "載入硬碟中離線系統內的驅動"
-  list-driver: "列舉驅動程式。支援線上系統、離線系統"
-  import-driver: "匯入驅動程式。支援線上系統、離線系統"
-  export-driver: "匯出驅動程式。支援線上系統、離線系統"
-  remove-driver: "刪除驅動程式。支援線上系統、離線系統"
-  organize-driver: "整理驅動程式"
-  pack-driver: "建立驅動程式包"
-  scan-devices: "掃描新硬體"
+  index: "建立驅動索引。索引格式：JSON"
+  info: "輸出驅動索引資訊"
+  install: "安裝驅動。自動匹配壓縮包中的驅動程式並安裝"
+  eject: "彈出免驅動裝置虛擬光碟機以辨識真實USB裝置"
+  install-offline: "載入硬碟中離線系統內的驅動"
+  list: "列舉驅動程式。支援線上系統、離線系統"
+  import: "匯入驅動程式。支援線上系統、離線系統"
+  export: "匯出驅動程式。支援線上系統、離線系統"
+  remove: "刪除驅動程式。支援線上系統、離線系統"
+  organize: "整理驅動程式"
+  pack: "建立驅動程式包"
+  scan: "掃描新硬體"
   help: "列印說明資訊。顯示此資訊或指定命令說明"
 # 選項
 options:
@@ -36,9 +36,9 @@ options:
   index-path: "索引檔案路徑"
   package-password: "設定壓縮包密碼"
   match-all-device: "匹配所有裝置"
-  match-device: "匹配本機裝置"
+  missing-only: "僅安裝缺失的驅動"
   driver-category: "驅動類別"
-  only-unzip: "僅解壓縮驅動程式而不安裝"
+  extract_to: "僅解壓縮驅動程式而不安裝"
   force: "強制安裝驅動程式"
   rename: "重新命名驅動目錄"
   system-drive: "系統碟路徑"
@@ -49,8 +49,7 @@ options:
   log-path: "日誌檔案路徑"
   help: "列印說明資訊"
   version: "列印版本資訊"
-帮我完善test:
-  rs的output_csv函数，我想把每一个硬件ID都列成一行信息:value-parser:
+value-parser:
   path-not-exist: "路徑不存在"
   dir-not-exist: "目錄不存在"
   file-not-exist: "檔案不存在"
@@ -60,7 +59,7 @@ options:
 # 建立索引
 create-index-info: "正在建立驅動索引......"
 no-hardware: "未偵測到硬體資訊"
-inf-parsing-err: "INF解析錯誤"
+inf-parse-error: "INF解析錯誤"
 index-save-failed: "索引檔案儲存失敗"
 no-inf-find: "沒有找到驅動資訊"
 total-info: "共處理 %{total} 個驅動，成功 %{success} 個驅動，失敗 %{error} 個驅動，未偵測到硬體資訊 %{blank} 個驅動"
@@ -70,19 +69,21 @@ save-info: "驅動索引儲存在 %{path}"
 driver-install-info: "安裝驅動"
 load-index: "載入索引"
 no-device: "取得硬體資訊失敗"
+found-devices: "找到 %{total} 個裝置需要處理"
 config-parse-failed: "索引檔案解析失敗，請重新生成索引檔案"
 driver-not-match-config: "驅動程式包與索引檔案不匹配，請重新生成索引檔案"
 no-driver-package: "在驅動程式包中未偵測到驅動程式"
 no-found-driver-currently: "找不到目前需要安裝驅動的裝置"
+install-skipped: "跳過: %{name} (目前驅動已是最新或更佳)"
 install-success: "硬體: %{name}\n            裝置: %{id}\n            類別: %{class}\n            驅動: %{driver}\n            版本: %{version}\n            日期: %{date}"
-install-failed: "硬體: %{name}\n            裝置: %{id}"
+install-failed: "硬體: %{name}\n            裝置: %{id}\n            信息: %{info}"
 driver-unzip-failed: "驅動程式解壓縮失敗"
 driver-unzip-success: "驅動程式解壓縮成功"
 driver-install-failed: "驅動程式安裝失敗"
 driver-install-success: "驅動程式安裝成功"
 
 # 載入離線驅動
-loading-offline-driver: "載入離線系統驅動 (%{path})"
+install-offline-driver: "安裝離線系統驅動 (%{path})"
 not-found-offline-system: "沒有找到離線系統"
 
 # 匯入驅動
