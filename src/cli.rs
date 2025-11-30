@@ -273,7 +273,7 @@ pub enum Command {
 
 /// 是否为有效的文件路径（不包括通配符）
 fn exist_file_parser(path: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(path);
+    let path = PathBuf::from(normalize_drive_root(path));
     if !path.exists() {
         return Err(t!("value-parser.path-not-exist").to_string());
     };
@@ -282,7 +282,7 @@ fn exist_file_parser(path: &str) -> Result<PathBuf, String> {
 
 /// 是否为有效的目录路径
 fn exist_dir_parser(directory: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(directory);
+    let path = PathBuf::from(normalize_drive_root(directory));
     if !path.exists() {
         return Err(t!("value-parser.dir-not-exist").to_string());
     };
@@ -294,7 +294,7 @@ fn exist_dir_parser(directory: &str) -> Result<PathBuf, String> {
 
 /// 是否为有效的路径（包括通配符）
 fn exist_file_wildcard_parser(path: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(path);
+    let path = PathBuf::from(normalize_drive_root(path));
 
     let file_name = path.file_name().unwrap().to_string_lossy();
     if file_name.contains('*') || file_name.contains('?') {
@@ -312,7 +312,7 @@ fn exist_file_wildcard_parser(path: &str) -> Result<PathBuf, String> {
 
 /// 是否为系统路径
 fn exist_system_parser(system_path: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(system_path);
+    let path = PathBuf::from(normalize_drive_root(system_path));
     if !path.exists() {
         return Err(t!("value-parser.path-not-exist").to_string());
     };
@@ -320,4 +320,21 @@ fn exist_system_parser(system_path: &str) -> Result<PathBuf, String> {
         return Err(t!("value-parser.not-system-path").to_string());
     }
     Ok(path)
+}
+
+/// 标准化系统盘符根路径，确保路径以反斜杠结尾。如果路径只有盘符（例如 “X:”），则在末尾添加反斜杠（例如 “X:\”）。
+///
+/// # 参数
+///
+/// - `s`：系统盘符根路径（例如 “X:” 或 “X:\”）
+///
+/// # 返回值
+///
+/// - `String`：标准化后的系统盘符根路径（例如 “X:\”）
+fn normalize_drive_root(s: &str) -> String {
+    if s.len() == 2 && s.as_bytes()[1] == b':' && s.as_bytes()[0].is_ascii_alphabetic() {
+        format!("{}\\", s)
+    } else {
+        s.to_string()
+    }
 }
