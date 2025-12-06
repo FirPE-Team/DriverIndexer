@@ -1,8 +1,9 @@
-use crate::Asset;
+use crate::{Asset, SECRET_KEY};
 use anyhow::{anyhow, Context, Result};
 use chrono::Local;
 use glob::MatchOptions;
 use goblin::pe::PE;
+use magic_crypt::{new_magic_crypt, MagicCryptTrait};
 use std::cmp::Ordering;
 use std::ffi::c_void;
 use std::ffi::{OsStr, OsString};
@@ -168,6 +169,47 @@ pub fn launched_from_explorer() -> bool {
         return name.eq_ignore_ascii_case("explorer.exe");
     }
     false
+}
+
+/// 加密密码
+///
+/// # 参数
+/// - `password`: 密码
+///
+/// # 返回值
+/// - `Ok(String)`: 加密后的密码
+/// - `Err(...)`：失败则返回错误
+pub fn encrypt_password(password: &str) -> String {
+    let mc = new_magic_crypt!(SECRET_KEY, 128);
+    // 加密密码并移除尾部的 '='
+    mc.encrypt_str_to_base64(password)
+        .trim_end_matches('=')
+        .to_string()
+}
+
+/// 解密密码
+///
+/// # 参数
+/// - `encrypted_password`: 加密后的密码
+///
+/// # 返回值
+/// - `Ok(String)`: 解密后的密码
+/// - `Err(...)`：失败则返回错误
+pub fn decrypt_password(encrypted_password: &str) -> Result<String> {
+    // 复制一份可变的密文
+    let mut cipher_text = encrypted_password.to_string();
+    let len = cipher_text.len();
+    let remainder = len % 4;
+
+    // 只有当 remainder 为 2 或 3 时，才需要补齐 '='
+    if remainder == 2 {
+        cipher_text.push_str("==");
+    } else if remainder == 3 {
+        cipher_text.push('=');
+    }
+
+    let mc = new_magic_crypt!(SECRET_KEY, 128);
+    Ok(mc.decrypt_base64_to_string(cipher_text)?)
 }
 
 /// 遍历目录及子目录下的所有指定文件

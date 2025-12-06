@@ -55,3 +55,6 @@ windows = { version = "0.62.2", features = [
     "Win32_Security_WinTrust",
     "Win32_Security_Cryptography"
 ] }
+magic-crypt = "4.0.1"
+dotenvy = "0.15.7"
+dotenvy_macro = "0.15.7"

@@ -27,6 +27,7 @@ commands:
   organize: "드라이버를 정리합니다"
   pack: "드라이버 패키지를 생성합니다"
   scan: "새 하드웨어를 스캔합니다"
+  encrypt: "암호화할 평문 비밀번호"
   help: "도움말 정보를 출력합니다. 이 정보 또는 지정된 명령의 도움말을 표시합니다"
 # 옵션
 options:
@@ -45,6 +46,7 @@ options:
   export-path: "드라이버 내보내기 경로"
   driver-name: "드라이버 이름(inf)"
   driver-provider: "드라이버 공급자"
+  encrypt-password: "암호화할 평문 비밀번호"
   debug: "디버그 모드를 활성화합니다"
   log-path: "로그 파일 경로"
   help: "도움말 정보를 출력합니다"

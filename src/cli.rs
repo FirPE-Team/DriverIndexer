@@ -269,6 +269,13 @@ pub enum Command {
     /// 弹出免驱设备子命令
     #[clap(about(t!("commands.eject").to_string()))]
     Eject,
+
+    /// 加密密码字符串，生成可用于 -p 参数的安全密文
+    Encrypt {
+        /// 要加密的明文密码
+        #[clap(help(t!("options.encrypt-password").to_string()))]
+        text: String,
+    },
 }
 
 /// 是否为有效的文件路径（不包括通配符）

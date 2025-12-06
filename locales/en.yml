@@ -46,6 +46,7 @@ options:
   driver-name: "Driver name (inf)"
   driver-provider: "Driver provider"
   debug: "Enable debug mode"
+  encrypt-password: "Encrypt password string to secure ciphertext"
   log-path: "Log file path"
   help: "Print help information"
   version: "Print version information"
@@ -53,6 +54,7 @@ value-parser:
   path-not-exist: "Path does not exist"
   dir-not-exist: "Directory does not exist"
   file-not-exist: "File does not exist"
+  encrypt-password: "Plaintext password to encrypt"
   not-system-path: "Not a system path"
   not-dir: "Path is not a directory"
 

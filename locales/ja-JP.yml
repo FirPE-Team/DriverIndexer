@@ -27,6 +27,7 @@ commands:
   organize: "ドライバーを整理します"
   pack: "ドライバーパッケージを作成します"
   scan: "新しいハードウェアをスキャンします"
+  encrypt: "暗号化する平文パスワード"
   help: "ヘルプ情報を表示します。この情報または指定されたコマンドのヘルプを表示します"
 # オプション
 options:
@@ -46,6 +47,7 @@ options:
   driver-name: "ドライバー名(inf)"
   driver-provider: "ドライバープロバイダー"
   debug: "デバッグモードを有効にします"
+  encrypt-password: "暗号化する平文パスワード"
   log-path: "ログファイルパス"
   help: "ヘルプ情報を表示します"
   version: "バージョン情報を表示します"

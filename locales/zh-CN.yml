@@ -27,6 +27,7 @@ commands:
   organize: "整理驱动程序"
   pack: "创建驱动程序包"
   scan: "扫描新硬件"
+  encrypt: "加密密码字符串，生成可用于 -p 参数的安全密文"
   help: "打印帮助信息。显示此信息或指定命令帮助"
 # 选项
 options:
@@ -45,6 +46,7 @@ options:
   export-path: "导出驱动程序路径"
   driver-name: "驱动程序名称(inf)"
   driver-provider: "驱动程序供应商"
+  encrypt-password: "要加密的明文密码"
   debug: "开启调试模式"
   log-path: "日志文件路径"
   help: "打印帮助信息"
@@ -121,3 +123,6 @@ organize-driver-failed: "整理驱动失败"
 # 创建驱动
 pack-driver-success: "创建驱动包成功"
 pack-driver-failed: "创建驱动包失败"
+
+# 解密密码
+decrypt-password-failed: "解密密码失败"

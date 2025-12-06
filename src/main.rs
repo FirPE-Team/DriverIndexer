@@ -4,8 +4,10 @@
 // 禁用未使用代码警告
 #![allow(dead_code)]
 
+extern crate dotenvy_macro;
 #[macro_use]
 extern crate lazy_static;
+
 rust_i18n::i18n!("locales");
 
 mod cli;
@@ -23,9 +25,12 @@ use crate::driver_index::DriverIndex;
 use crate::driver_manger::DriverManger;
 use crate::utils::console::{write_console, ConsoleType};
 use crate::utils::setupapi::SetupAPI;
-use crate::utils::utils::{get_file_list, get_temp_name, launched_from_explorer};
+use crate::utils::utils::{
+    decrypt_password, encrypt_password, get_file_list, get_temp_name, launched_from_explorer,
+};
 use anyhow::{anyhow, Context};
 use clap::Parser;
+use dotenvy_macro::dotenv;
 use remove_dir_all::remove_dir_all;
 use rust_embed::Embed;
 use rust_i18n::{set_locale, t};
@@ -56,6 +61,9 @@ pub struct Asset;
 #[derive(Embed)]
 #[folder = "./assets-ARM64"]
 pub struct Asset;
+
+/// 驱动包密码加密密钥
+pub static SECRET_KEY: &str = dotenv!("SECRET_KEY");
 
 static DEBUG: AtomicBool = AtomicBool::new(false);
 static LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
@@ -176,6 +184,23 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 &driver_path.parent().unwrap().join(config_name)
             };
 
+            // 解密密码
+            let mut password = password.clone();
+            if let Some(crypt_text) = &password {
+                match try_decrypt_password(crypt_text) {
+                    Ok(p) => {
+                        password = Some(p);
+                    }
+                    Err(e) => {
+                        write_console(
+                            ConsoleType::Error,
+                            &format!("{}: {}", &t!("decrypt-password-failed"), e),
+                        );
+                        process::exit(exitcode::DATAERR);
+                    }
+                }
+            }
+
             write_console(ConsoleType::Info, &t!("create-index-info"));
             match command::create_index(driver_path, password.as_deref(), config_path) {
                 Ok((total, success_count, error_count, blank_count)) => {
@@ -228,6 +253,23 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
                 write_console(ConsoleType::Error, &t!("temp-create-failed"));
                 process::exit(exitcode::IOERR);
+            }
+
+            // 解密密码
+            let mut password = password.clone();
+            if let Some(crypt_text) = &password {
+                match try_decrypt_password(crypt_text) {
+                    Ok(p) => {
+                        password = Some(p);
+                    }
+                    Err(e) => {
+                        write_console(
+                            ConsoleType::Error,
+                            &format!("{}: {}", &t!("decrypt-password-failed"), e),
+                        );
+                        process::exit(exitcode::DATAERR);
+                    }
+                }
             }
 
             let driver_loader = DriverInstaller::new();
@@ -366,6 +408,23 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
                 write_console(ConsoleType::Error, &t!("temp-create-failed"));
                 process::exit(exitcode::IOERR);
+            }
+
+            // 解密密码
+            let mut password = password.clone();
+            if let Some(crypt_text) = &password {
+                match try_decrypt_password(crypt_text) {
+                    Ok(p) => {
+                        password = Some(p);
+                    }
+                    Err(e) => {
+                        write_console(
+                            ConsoleType::Error,
+                            &format!("{}: {}", &t!("decrypt-password-failed"), e),
+                        );
+                        process::exit(exitcode::DATAERR);
+                    }
+                }
             }
 
             // 处理通配符
@@ -607,5 +666,43 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 Err(e)
             }
         },
+
+        // 加密密码子命令
+        Command::Encrypt { text } => {
+            let encrypted = encrypt_password(text);
+            println!("enc:{}", encrypted);
+            Ok(())
+        }
     }
+}
+
+/// 尝试解密密码
+///
+/// # 参数
+/// - `input`：待解密的密码字符串，支持 "enc:" 或 "raw:" 前缀。
+///
+/// # 返回值
+/// - `Ok(String)`：成功解密后的明文密码。
+/// - `Err(anyhow::Error)`：解密失败，包含错误信息。
+///
+/// # 解析规则
+/// 1. 如果输入以 `raw:` 开头，则强制视为明文（去除前缀后使用），用于处理密码本身以 "enc:" 开头的情况。
+/// 2. 如果输入以 `enc:` 开头，则尝试使用内置密钥进行 AES 解密。
+/// 3. 其他情况，视为普通明文密码。
+fn try_decrypt_password(input: &str) -> anyhow::Result<String> {
+    const ENC_PREFIX: &str = "enc:";
+    const RAW_PREFIX: &str = "raw:";
+
+    // 优先处理转义前缀
+    if let Some(raw) = input.strip_prefix(RAW_PREFIX) {
+        return Ok(raw.to_string());
+    }
+
+    // 不是加密格式，直接返回明文
+    if !input.starts_with(ENC_PREFIX) {
+        return Ok(input.to_string());
+    }
+
+    let cipher_text = &input[ENC_PREFIX.len()..];
+    decrypt_password(cipher_text)
 }
