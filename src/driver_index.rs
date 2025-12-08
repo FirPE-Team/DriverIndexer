@@ -242,22 +242,22 @@ impl InfInfo {
     /// - `Ok(InfInfo)`: 解析后的INF驱动信息
     pub fn parse_inf(base_path: &Path, inf_file: &Path) -> Result<InfInfo> {
         let handle_inf = SetupAPI::open_inf_file(inf_file)
-            .with_context(|| format!("Open inf file {:?} failed", inf_file))?;
+            .with_context(|| "Open inf file failed".to_string())?;
 
         // 查找Class字段
         let class_context = SetupAPI::find_first_line(handle_inf, "Version", Some("Class"))
-            .with_context(|| format!("Find class line failed: {:?}", inf_file))?;
+            .with_context(|| "Find class line failed".to_string())?;
         let class = SetupAPI::get_string_field(&class_context, 1)
-            .with_context(|| format!("Get class failed: {:?}", inf_file))?;
+            .with_context(|| "Get class failed".to_string())?;
 
         // 查找DriverVer段
         let driver_ver_context =
             SetupAPI::find_first_line(handle_inf, "Version", Some("DriverVer"))
-                .with_context(|| format!("Find version line failed: {:?}", inf_file))?;
+                .with_context(|| "Find version line failed".to_string())?;
 
         // 解析Date字段
         let mut date = SetupAPI::get_string_field(&driver_ver_context, 1)
-            .with_context(|| format!("Get date failed: {:?}", inf_file))?;
+            .with_context(|| "Get date failed".to_string())?;
         // 去掉前导非数字（例如 "Thu03/14/2002"、"Thu 03/14/2002"）
         if let Some(pos) = date.find(|c: char| c.is_ascii_digit()) {
             date = date[pos..].to_string();
@@ -273,7 +273,7 @@ impl InfInfo {
 
         // 解析Version字段
         let version = SetupAPI::get_string_field(&driver_ver_context, 2)
-            .with_context(|| format!("Get version failed: {:?}", inf_file))?;
+            .with_context(|| "Get version failed".to_string())?;
 
         // 查找CatalogFile字段
         const SEARCH_KEYS: [&str; 5] = [
@@ -313,7 +313,7 @@ impl InfInfo {
 
         // 遍历 [Manufacturer] 节
         let mut manufacturer_context = SetupAPI::find_first_line(handle_inf, "Manufacturer", None)
-            .with_context(|| format!("Find manufacturer line failed: {:?}", inf_file))?;
+            .with_context(|| "Find manufacturer line failed".to_string())?;
         loop {
             let field_count = SetupAPI::get_field_count(&manufacturer_context);
             if let Ok(base_name) = SetupAPI::get_string_field(&manufacturer_context, 1) {

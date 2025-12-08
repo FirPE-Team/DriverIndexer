@@ -4,10 +4,9 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 use windows::core::{GUID, PCWSTR};
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
-    CM_Locate_DevNodeW, CM_Reenumerate_DevNode, SetupCloseInfFile, SetupDiClassGuidsFromNameExW
-    , SetupDiGetClassDescriptionW, SetupFindFirstLineW, SetupFindNextLine,
-    SetupGetFieldCount, SetupGetStringFieldW, SetupOpenInfFileW
-    , CM_LOCATE_DEVNODE_NORMAL, CONFIGRET, INFCONTEXT,
+    CM_Locate_DevNodeW, CM_Reenumerate_DevNode, SetupCloseInfFile, SetupDiClassGuidsFromNameExW,
+    SetupDiGetClassDescriptionW, SetupFindFirstLineW, SetupFindNextLine, SetupGetFieldCount, SetupGetStringFieldW,
+    SetupOpenInfFileW, CM_LOCATE_DEVNODE_NORMAL, CONFIGRET, INFCONTEXT,
     INF_STYLE_OLDNT, INF_STYLE_WIN4,
 };
 use windows::Win32::Foundation::INVALID_HANDLE_VALUE;
@@ -186,23 +185,22 @@ impl SetupAPI {
         key: Option<&str>,
     ) -> Result<INFCONTEXT> {
         let section_wide: Vec<u16> = OsStr::new(section).encode_wide().chain(Some(0)).collect();
+        let key_wide = match key {
+            Some(key) => {
+                let key_wide: Vec<u16> = OsStr::new(key).encode_wide().chain(Some(0)).collect();
+                PCWSTR(key_wide.as_ptr())
+            }
+            None => PCWSTR::null(),
+        };
 
         let mut context = INFCONTEXT::default();
         unsafe {
             SetupFindFirstLineW(
                 inf_handle,
                 PCWSTR(section_wide.as_ptr()),
-                match key {
-                    None => PCWSTR::null(),
-                    Some(key) => {
-                        let key_wide: Vec<u16> =
-                            OsStr::new(key).encode_wide().chain(Some(0)).collect();
-                        PCWSTR(key_wide.as_ptr())
-                    }
-                },
+                key_wide,
                 &mut context,
-            )
-            .with_context(|| "SetupFindFirstLineW failed")?;
+            )?;
         }
         Ok(context)
     }
