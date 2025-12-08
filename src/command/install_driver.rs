@@ -149,7 +149,6 @@ impl DriverInstaller {
             };
             if hwid_list.is_empty() {
                 // 没有需要安装驱动的设备
-                write_console(ConsoleType::Error, &t!("no-found-driver-currently"));
                 return Err(anyhow!(t!("no-found-driver-currently")));
             }
 
@@ -175,7 +174,6 @@ impl DriverInstaller {
             let match_hardware_and_driver = match_driver_info(&hwid_list, &config.drivers, class);
             if match_hardware_and_driver.is_empty() {
                 if scan_count == 0 {
-                    write_console(ConsoleType::Error, &t!("no-found-driver-currently"));
                     return Err(anyhow!(t!("no-found-driver-currently")));
                 }
                 continue;
@@ -566,7 +564,7 @@ impl DriverInstaller {
                 self.zip
                     .extract_files_from_path(driver_pack_path, password, "*.inf", extract_path)
             {
-                return Err(anyhow!("{}: {}", t!("driver-unzip-failed"), e));
+                return Err(anyhow!(t!("driver-unzip-failed")));
             }
             extract_path
         } else {

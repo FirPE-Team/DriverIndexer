@@ -366,7 +366,10 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                     *force,
                 ) {
                     Ok(_) => Ok(()),
-                    Err(e) => Err(e),
+                    Err(e) => {
+                        write_console(ConsoleType::Error, &e.to_string());
+                        Err(e)
+                    }
                 }
             }
         }
