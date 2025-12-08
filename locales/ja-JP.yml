@@ -66,6 +66,7 @@ index-save-failed: "インデックスファイルの保存に失敗しました
 no-inf-find: "ドライバー情報が見つかりませんでした"
 total-info: "合計 %{total} 個のドライバーを処理し、成功 %{success} 個、失敗 %{error} 個、ハードウェア情報が未検出 %{blank} 個"
 save-info: "ドライバーインデックスは %{path} に保存されました"
+create-index-failed: "ドライバーインデックスの作成に失敗しました"
 
 # ドライバーインストール
 driver-install-info: "ドライバーをインストール"

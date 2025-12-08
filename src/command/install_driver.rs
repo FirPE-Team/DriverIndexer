@@ -9,7 +9,7 @@ use anyhow::{anyhow, Context, Result};
 use rust_i18n::t;
 use std::env;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc::channel;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
@@ -137,16 +137,18 @@ impl DriverInstaller {
             // 扫描以发现新的硬件
             SetupAPI::rescan();
 
-            // 获取真实硬件信息
+            // 获取硬件信息
             if DEBUG.load(Ordering::Relaxed) {
                 write_console(ConsoleType::Debug, "Get hardware info");
             }
-            // 判断是否需要获取有问题的硬件信息
-            let hwid_list = if missing_only {
-                enumerate_hardware(None, true).with_context(|| "get real info failed")?
-            } else {
-                enumerate_hardware(None, false).with_context(|| "get real info failed")?
-            };
+            let hwid_list = enumerate_hardware(None, missing_only)
+                .with_context(|| "Get hardware info failed")?;
+            if DEBUG.load(Ordering::Relaxed) {
+                write_console(
+                    ConsoleType::Debug,
+                    &format!("Found {} devices", hwid_list.len()),
+                );
+            }
             if hwid_list.is_empty() {
                 // 没有需要安装驱动的设备
                 return Err(anyhow!(t!("no-found-driver-currently")));
@@ -589,21 +591,47 @@ impl DriverInstaller {
         let (tx, rx) = channel();
         let base_path = Arc::new(drivers_path.to_path_buf());
 
+        let success_count = Arc::new(AtomicI32::new(0));
+        let error_count = Arc::new(AtomicI32::new(0));
+
         // 遍历INF文件
         for inf_file in inf_list.into_iter() {
             let tx = tx.clone();
             let base_path = Arc::clone(&base_path);
+            let success_count = Arc::clone(&success_count);
+            let error_count = Arc::clone(&error_count);
 
             pool.execute(move || {
                 // 解析INF文件，解析失败的INF将自动跳过
                 if let Ok(inf_info) = InfInfo::parse_inf(&base_path, &inf_file) {
+                    // 增加成功计数
+                    success_count.fetch_add(1, Ordering::Relaxed);
+
                     // 发送到主线程
                     tx.send(inf_info).expect("Send inf_info failed");
+                } else {
+                    // 增加错误计数
+                    error_count.fetch_add(1, Ordering::Relaxed);
                 }
             });
         }
 
         drop(tx);
+        let inf_info_list = rx.into_iter().collect::<Vec<_>>();
+        if DEBUG.load(Ordering::Relaxed) {
+            write_console(
+                ConsoleType::Debug,
+                &format!(
+                    "Build index: {}/{}",
+                    success_count.load(Ordering::Relaxed),
+                    inf_info_list.len()
+                ),
+            );
+        }
+        if inf_info_list.is_empty() {
+            return Err(anyhow!(t!("create-index-failed")));
+        }
+
         let timestamp = driver_pack_path
             .metadata()
             .with_context(|| format!("get drive path metadata {:?}", driver_pack_path))?
@@ -624,7 +652,7 @@ impl DriverInstaller {
                 .with_context(|| "Get driver pack path metadata failed")?
                 .len(),
             timestamp,
-            rx.into_iter().collect(),
+            inf_info_list,
         ))
     }
 }

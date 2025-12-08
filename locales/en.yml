@@ -66,6 +66,7 @@ index-save-failed: "Index file save failed"
 no-inf-find: "No driver information found"
 total-info: "Processed %{total} drivers in total, %{success} drivers successful, %{error} drivers failed, %{blank} drivers without hardware information"
 save-info: "Driver index saved at %{path}"
+create-index-failed: "Driver index creation failed"
 
 # Load driver
 driver-install-info: "Install driver"

@@ -66,6 +66,7 @@ index-save-failed: "인덱스 파일 저장에 실패했습니다"
 no-inf-find: "드라이버 정보를 찾을 수 없습니다"
 total-info: "총 %{total}개 드라이버를 처리했으며, 성공 %{success}개, 실패 %{error}개, 하드웨어 정보 미감지 %{blank}개"
 save-info: "드라이버 인덱스가 %{path}에 저장되었습니다"
+create-index-failed: "드라이버 인덱스 생성에 실패했습니다"
 
 # 드라이버 설치
 driver-install-info: "드라이버 설치"

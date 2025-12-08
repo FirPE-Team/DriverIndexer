@@ -66,6 +66,7 @@ index-save-failed: "索引文件保存失败"
 no-inf-find: "没有找到驱动信息"
 total-info: "共处理 %{total} 个驱动，成功 %{success} 个驱动，失败 %{error} 个驱动，未检测到硬件信息 %{blank} 个驱动"
 save-info: "驱动索引保存在 %{path}"
+create-index-failed: "建立索引失败"
 
 # 安装驱动
 driver-install-info: "安装驱动"

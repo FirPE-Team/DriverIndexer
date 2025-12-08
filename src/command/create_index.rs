@@ -120,7 +120,7 @@ pub fn create_index(
                     write_console(
                         ConsoleType::Error,
                         &format!(
-                            "{}: {}({})",
+                            "{}: {} ({})",
                             t!("inf-parse-error"),
                             item.to_string_lossy()
                                 .trim_start_matches(&*TEMP_PATH.to_string_lossy()),
@@ -137,6 +137,9 @@ pub fn create_index(
 
     // 接收所有线程解析结果
     let mut inf_info_list: Vec<InfInfo> = rx.into_iter().collect();
+    if inf_info_list.is_empty() {
+        return Err(anyhow!(t!("create-index-failed")));
+    }
 
     // 对INF文件列表进行排序
     InfInfo::sort_inf_list(&mut inf_info_list);
