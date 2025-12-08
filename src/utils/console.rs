@@ -2,7 +2,9 @@ use crate::utils::utils::write_log;
 use crate::LOG_PATH;
 use console::style;
 use rust_i18n::t;
+use std::cmp::PartialEq;
 
+#[derive(PartialEq)]
 pub enum ConsoleType {
     /// 普通信息
     Info,
@@ -32,7 +34,12 @@ pub fn write_console(consoleType: ConsoleType, message: &str) {
         ConsoleType::Error => style(t!("console.err")).red().on_black().bold(),
         ConsoleType::Debug => style(t!("console.debug")).blue(),
     };
-    println!("  {}      {}", &title, message);
+
+    if consoleType == ConsoleType::Error {
+        eprintln!("  {}      {}", &title, message);
+    } else {
+        println!("  {}      {}", &title, message);
+    }
 
     // 写入日志文件
     if let Some(log_path) = LOG_PATH.get() {
