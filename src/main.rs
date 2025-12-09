@@ -149,8 +149,19 @@ fn main() {
     process::exit(match result {
         Ok(_) => exitcode::OK,
         Err(e) => {
-            if e.to_string() == t!("no-found-driver-currently") {
-                exitcode::CONFIG
+            if e.to_string() == t!("no-found-driver-currently")
+                || e.to_string() == t!("not-found-virtual-drive")
+            {
+                exitcode::UNAVAILABLE
+            } else if e.to_string() == t!("create-index-failed")
+                || e.to_string() == t!("no-driver-package")
+                || e.to_string() == t!("driver-unzip-failed")
+            {
+                exitcode::DATAERR
+            } else if e.to_string() == t!("index-save-failed") {
+                exitcode::CANTCREAT
+            } else if e.to_string() == t!("offline-Arch-Err") {
+                exitcode::OSERR
             } else {
                 1
             }
