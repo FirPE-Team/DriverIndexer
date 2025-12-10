@@ -7,7 +7,6 @@ use crate::utils::utils::{compare_version, find_offline_system, get_file_list, g
 use crate::{DEBUG, TEMP_PATH};
 use anyhow::{anyhow, Context, Result};
 use rust_i18n::t;
-use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc::channel;
@@ -471,27 +470,6 @@ impl DriverInstaller {
             self.install_driver(&system_drive, None, None, missing_only, class, None, false)?;
         }
         Ok(())
-    }
-
-    /// 加载当前可执行文件中的驱动程序
-    ///
-    /// # 返回值
-    /// - `Ok(())`: 成功加载驱动
-    /// - `Err(...)`: 加载驱动失败
-    pub fn load_self_driver_program(&self) -> Result<()> {
-        let current_exe =
-            env::current_exe().with_context(|| "Get Current Executable Path Failed")?;
-
-        let index = self.find_config(&current_exe, None, &TEMP_PATH);
-        self.install_driver(
-            &current_exe,
-            None,
-            index.as_deref(),
-            false,
-            None,
-            None,
-            false,
-        )
     }
 
     /// 查找配置文件

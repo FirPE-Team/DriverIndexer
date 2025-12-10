@@ -244,7 +244,7 @@ impl DriverManger {
 
         // 判断是否为驱动包
         if driver_path.is_file() {
-            if zip.is_driver_package(driver_path).is_err() {
+            if zip.is_driver_package(driver_path, password).is_err() {
                 return Err(anyhow!(t!("no-driver-package")));
             }
 

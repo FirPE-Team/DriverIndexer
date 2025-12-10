@@ -145,12 +145,14 @@ impl SevenZip {
     ///
     /// # 参数
     /// - `path`: 压缩包路径
+    /// - `password`: 压缩包密码（可选）
     ///
     /// # 返回值
     /// - `Result<bool>`: 是否为驱动包
-    pub fn is_driver_package(&self, path: &Path) -> Result<()> {
+    pub fn is_driver_package(&self, path: &Path, password: Option<&str>) -> Result<()> {
         let output = Command::new(&self.zip_program)
             .arg("l")
+            .arg(format!("-p{}", password.unwrap_or("")))
             .arg("-ba")
             .arg("-sccUTF-8")
             .arg(path.to_str().unwrap())

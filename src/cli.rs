@@ -260,6 +260,11 @@ pub enum Command {
         #[clap(index = 2)]
         #[clap(help(t!("options.driver-package-program-path").to_string()))]
         program_path: PathBuf,
+
+        /// 驱动密码
+        #[clap(short, long)]
+        #[clap(help(t!("options.package-password").to_string()))]
+        password: Option<String>,
     },
 
     /// 扫描设备硬件更改子命令

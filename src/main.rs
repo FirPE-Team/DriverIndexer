@@ -37,11 +37,11 @@ use rust_i18n::{set_locale, t};
 use std::env::temp_dir;
 use std::fs::create_dir_all;
 use std::path::PathBuf;
-use std::process;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use std::thread::sleep;
 use std::time::Duration;
+use std::{env, process};
 use sys_locale::get_locale;
 
 // 设置静态资源: x64平台
@@ -84,15 +84,30 @@ fn main() {
     };
 
     // 检测到当前程序内嵌驱动包时则自动加载驱动
-    if check_if_bundled().is_some() {
+    if let Some(footer) = check_if_bundled() {
         // 创建临时目录
         if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
             write_console(ConsoleType::Error, &t!("temp-create-failed"));
             process::exit(exitcode::IOERR);
         }
 
+        let current_exe = env::current_exe().expect("Get Current Executable Path Failed");
         let driver_loader = DriverInstaller::new();
-        let result = driver_loader.load_self_driver_program();
+        let result = match driver_loader.install_driver(
+            &current_exe,
+            footer.get_password(),
+            None,
+            false,
+            None,
+            None,
+            false,
+        ) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                write_console(ConsoleType::Error, &e.to_string());
+                Err(e)
+            }
+        };
         if TEMP_PATH.exists()
             && let Err(e) = remove_dir_all(&*TEMP_PATH)
         {
@@ -665,6 +680,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         Command::Pack {
             drive_path,
             program_path,
+            password,
         } => {
             // 创建临时目录
             if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
@@ -678,7 +694,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 );
             };
 
-            match command::pack_driver_program(drive_path, program_path) {
+            match command::pack_driver_program(drive_path, program_path, password.as_deref()) {
                 Ok(_) => {
                     write_console(ConsoleType::Success, &t!("pack-driver-success"));
                     Ok(())

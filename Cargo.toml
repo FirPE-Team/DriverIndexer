@@ -22,6 +22,7 @@ clap = { version = "4.5.53", features = ["derive"] }
 glob = "0.3.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0"
+serde_bytes = "0.11.19"
 rust-embed = "8.9.0"
 lazy_static = "1.5.0"
 console = "0.16.1"

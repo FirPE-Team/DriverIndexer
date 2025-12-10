@@ -17,8 +17,8 @@ pub const BUFFER_SIZE: usize = 1024 * 512;
 /// 定义魔数
 const MAGIC_SIGNATURE: &[u8; 8] = b"DRV_PKG!";
 
-/// 固定长度：u64(8) + u64(8) + [u8;8](8) = 24
-const FOOTER_SIZE: i64 = 24;
+/// 固定长度：`u64(8)` + `u64(8)` + `[u8;8](64)` + `[u8;8](8)`
+const FOOTER_SIZE: i64 = 88;
 
 /// 嵌入驱动文件头
 #[derive(Serialize, Deserialize, Encode, Decode, Debug)]
@@ -27,6 +27,11 @@ pub struct EmbedDriverFooter {
     archive_offset: u64,
     /// 压缩包的大小
     archive_size: u64,
+    /// 压缩包密码（可选）
+    /// 预留 64 字节。如果实际密码长度不足，用 \0 填充。
+    /// 如果没有密码，整个数组用 \0 填充。
+    #[serde(with = "serde_bytes")]
+    password: [u8; 64],
     /// 魔数
     magic: [u8; 8],
 }
@@ -40,10 +45,15 @@ impl EmbedDriverFooter {
     ///
     /// # 返回值
     /// 一个新的 `EmbedDriverFooter` 实例
-    pub(crate) fn new(offset: u64, size: u64) -> Self {
+    pub(crate) fn new(offset: u64, size: u64, password: Option<&str>) -> Self {
         Self {
             archive_offset: offset,
             archive_size: size,
+            password: password.map_or([0u8; 64], |p| {
+                let mut pwd = p.as_bytes().to_vec();
+                pwd.resize(64, 0);
+                pwd.try_into().unwrap()
+            }),
             magic: *MAGIC_SIGNATURE,
         }
     }
@@ -59,6 +69,23 @@ impl EmbedDriverFooter {
         let config = config::standard().with_fixed_int_encoding();
         bincode::decode_from_slice(bytes, config)
     }
+
+    /// 获取压缩包密码
+    ///
+    /// # 返回值
+    /// - `Some(&str)`: 压缩包密码
+    /// - `None`: 没有密码
+    pub fn get_password(&self) -> Option<&str> {
+        if self.password.iter().all(|&b| b == 0) {
+            None
+        } else {
+            Some(
+                std::str::from_utf8(&self.password)
+                    .unwrap()
+                    .trim_end_matches(char::from(0)),
+            )
+        }
+    }
 }
 
 /// 创建驱动包程序
@@ -66,19 +93,24 @@ impl EmbedDriverFooter {
 /// # 参数
 /// - `driver_path` 驱动路径（可以是驱动目录或驱动包文件）
 /// - `out_path` 输出路径（驱动包程序）
+/// - `password` 压缩包密码（可选）
 ///
 /// # 返回值
 /// 如果函数成功，则返回 `true`；否则返回 `false`。
 ///
 /// # 注意
 /// 自身程序需要进行加壳处理，否则7z无法处理压缩包程序
-pub fn pack_driver_program(driver_path: &Path, out_path: &Path) -> Result<()> {
+pub fn pack_driver_program(
+    driver_path: &Path,
+    out_path: &Path,
+    password: Option<&str>,
+) -> Result<()> {
     let zip = SevenZip::new().with_context(|| "Initialize 7z Failed")?;
     let mut driver_path = driver_path.to_path_buf();
 
     if driver_path.is_file() {
         // 检查驱动路径是否为驱动包文件
-        if zip.is_driver_package(&driver_path).is_err() {
+        if zip.is_driver_package(&driver_path, None).is_err() {
             return Err(anyhow!(t!("no-driver-package")));
         }
     } else if driver_path.is_dir() {
@@ -157,7 +189,7 @@ pub fn pack_driver_program(driver_path: &Path, out_path: &Path) -> Result<()> {
     }
 
     // 写入驱动包文件头
-    let footer = EmbedDriverFooter::new(archive_offset, archive_size);
+    let footer = EmbedDriverFooter::new(archive_offset, archive_size, password);
     output_file
         .write_all(
             footer
@@ -174,13 +206,13 @@ pub fn pack_driver_program(driver_path: &Path, out_path: &Path) -> Result<()> {
 ///
 /// # 返回值
 /// 如果当前程序为内置驱动包，则返回压缩包的起始偏移量；否则返回 `None`。
-pub fn check_if_bundled() -> Option<u64> {
+pub fn check_if_bundled() -> Option<EmbedDriverFooter> {
     // 获取当前执行文件路径
     let current_exe = env::current_exe().ok()?;
     let mut file = File::open(&current_exe).ok()?;
 
-    // 移动文件指针到倒数 24 字节的位置
-    // 注意：如果有任何 IO 错误（比如文件太小不足24个字节），直接返回 None
+    // 移动文件指针到倒数 FOOTER_SIZE 字节的位置
+    // 注意：如果有任何 IO 错误（比如文件太小不足 FOOTER_SIZE 个字节），直接返回 None
     if file.seek(SeekFrom::End(-FOOTER_SIZE)).is_err() {
         return None;
     }
@@ -194,7 +226,7 @@ pub fn check_if_bundled() -> Option<u64> {
     if let Ok((footer, _size)) = EmbedDriverFooter::from_bytes(&buffer) {
         // 校验魔数
         if &footer.magic == MAGIC_SIGNATURE {
-            return Some(footer.archive_offset);
+            return Some(footer);
         }
     }
 
