@@ -189,7 +189,7 @@ impl DriverInstaller {
             let (tx, rx) = channel();
 
             // 循环匹配信息
-            for (hardware, infInfo) in match_hardware_and_driver {
+            for (hardware, driver_info) in match_hardware_and_driver {
                 // 当前状态：一个设备中有一个或多个驱动
 
                 // 调试模式下输出匹配信息
@@ -200,9 +200,9 @@ impl DriverInstaller {
                             "Match info:\n            Name: {}\n            HWID: {}\n            Driver:\n            {}",
                             hardware.name,
                             hardware.hardware_id.join(","),
-                            infInfo
+                            driver_info
                                 .iter()
-                                .map(|item| item.path.clone())
+                                .map(|(inf_info, _entry)| inf_info.path.clone())
                                 .collect::<Vec<String>>()
                                 .join("\n            ")
                         ),
@@ -217,14 +217,14 @@ impl DriverInstaller {
                     Some(path) => PathBuf::from(path),
                 };
                 let hardware = hardware.clone();
-                let inf_info = infInfo.clone();
+                let match_info = driver_info.clone();
                 let tx = tx.clone();
                 let zip = self.zip.clone();
 
                 // 为每个需要安装驱动的设备分配一个线程
                 pool.execute(move || {
                     // 遍历匹配的驱动
-                    for inf_info_item in inf_info.iter() {
+                    for (index, (inf_info_item, entry)) in match_info.iter().enumerate() {
                         // 判断驱动包是否需要解压
                         let inf_path = if driver_pack_path.is_file() {
                             // 获取解压路径（相对于解压所有INF文件的路径）
@@ -239,7 +239,7 @@ impl DriverInstaller {
                                 &drivers_path,
                             ) {
                                 // 解压失败
-                                if Some(inf_info_item) == inf_info.last() {
+                                if index == match_info.len() - 1 {
                                     // 最后一个驱动，返回失败
                                     tx.send((
                                         hardware,
@@ -260,7 +260,7 @@ impl DriverInstaller {
 
                             // 仅解压驱动文件，返回成功
                             if only_extract {
-                                tx.send((hardware, Ok(inf_info_item.clone())))
+                                tx.send((hardware, Ok((inf_info_item.clone(), entry.clone()))))
                                     .expect("send result failed");
                                 return;
                             }
@@ -275,7 +275,7 @@ impl DriverInstaller {
                                         &format!("Driver file not found: {}", inf_path.display()),
                                     );
                                 };
-                                if Some(inf_info_item) == inf_info.last() {
+                                if index == match_info.len() - 1 {
                                     // 最后一个驱动，返回失败
                                     tx.send((
                                         hardware,
@@ -307,7 +307,7 @@ impl DriverInstaller {
                             match update_driver_for_plug_and_play_devices(hwid, &inf_path, force) {
                                 Ok(()) => {
                                     // 安装驱动成功
-                                    tx.send((hardware, Ok(inf_info_item.clone())))
+                                    tx.send((hardware, Ok((inf_info_item.clone(), entry.clone()))))
                                         .expect("send result failed");
                                     return;
                                 }
@@ -322,7 +322,7 @@ impl DriverInstaller {
                                             ),
                                         );
                                     };
-                                    if Some(inf_info_item) == inf_info.last() {
+                                    if index == match_info.len() - 1 {
                                         // 最后一个驱动也返回失败
                                         if e == ERROR_NO_MORE_ITEMS.into() {
                                             // 函数找到了 HardwareId 值的匹配项，但指定的驱动程序不是比当前驱动程序更好的匹配项
@@ -372,23 +372,19 @@ impl DriverInstaller {
             // 在主线程中进行消息格式化和输出
             for (hardware, result) in rx.iter() {
                 match result {
-                    Ok(inf_info_item) => {
+                    Ok((inf_info_item, entry)) => {
                         write_console(
                             ConsoleType::Success,
                             &t!(
                                 "install-success",
                                 class = inf_info_item.class.clone(),
-                                name = hardware.name.clone(),
+                                name = entry.desc,
                                 id = hardware
                                     .hardware_id
                                     .first()
                                     .unwrap_or(&"".to_string())
                                     .clone(),
-                                driver = Path::new(inf_info_item.path.as_str())
-                                    .file_name()
-                                    .unwrap_or("".as_ref())
-                                    .to_string_lossy()
-                                    .to_string(),
+                                driver = inf_info_item.path,
                                 version = inf_info_item.version.clone(),
                                 date = inf_info_item.date
                             ),
@@ -540,7 +536,7 @@ impl DriverInstaller {
     ) -> Result<DriverIndex> {
         let drivers_path = if driver_pack_path.is_file() {
             // 解压全部 INF 文件
-            if let Err(e) =
+            if let Err(_e) =
                 self.zip
                     .extract_files_from_path(driver_pack_path, password, "*.inf", extract_path)
             {
@@ -652,8 +648,8 @@ enum MatchType {
 
 // 用于排序的临时结构
 struct MatchResult {
-    // 硬件条目
-    // entry: HardwareEntry,
+    /// 硬件条目
+    entry: HardwareEntry,
     ///INF 信息
     inf_info: InfInfo,
     /// 匹配类型
@@ -689,7 +685,7 @@ pub fn match_driver_info(
     hardware_info_list: &[HardwareInfo],
     inf_info_list: &[InfInfo],
     class_filter: Option<&str>,
-) -> Vec<(HardwareInfo, Vec<InfInfo>)> {
+) -> Vec<(HardwareInfo, Vec<(InfInfo, HardwareEntry)>)> {
     // 当前系统架构
     let current_arch = match get_native_arch() {
         // x86
@@ -728,6 +724,7 @@ pub fn match_driver_info(
             // [Best Match] 寻找该 INF 中针对此设备最高的匹配分数
             // 一个 INF 可能有多个 Entry 匹配同一个设备，我们取最好的那个作为该 INF 的代表
             let mut best_inf_score = MatchType::None;
+            let mut best_entry: Option<&HardwareEntry> = None;
 
             for entry in &inf_info.hardware {
                 // [Filter] 架构筛选 (Arch)
@@ -747,16 +744,19 @@ pub fn match_driver_info(
                 // 更新该 INF 的最高分
                 if current_score > best_inf_score {
                     best_inf_score = current_score;
+                    best_entry = Some(entry);
                 }
             }
 
             // 如果该 INF 有效匹配（分数 > None），加入候选列表
             if best_inf_score > MatchType::None {
-                matched_infs.push(MatchResult {
-                    // entry: entry.clone(),
-                    inf_info: inf_info.clone(),
-                    score: best_inf_score,
-                });
+                if let Some(entry) = best_entry {
+                    matched_infs.push(MatchResult {
+                        entry: entry.clone(),
+                        inf_info: inf_info.clone(),
+                        score: best_inf_score,
+                    });
+                }
             }
         }
 
@@ -782,7 +782,10 @@ pub fn match_driver_info(
         });
 
         // 提取排序后的 INF 引用
-        let sorted_infs: Vec<InfInfo> = matched_infs.into_iter().map(|m| m.inf_info).collect();
+        let sorted_infs: Vec<(InfInfo, HardwareEntry)> = matched_infs
+            .into_iter()
+            .map(|m| (m.inf_info, m.entry))
+            .collect();
 
         if !sorted_infs.is_empty() {
             results.push((device.clone(), sorted_infs));

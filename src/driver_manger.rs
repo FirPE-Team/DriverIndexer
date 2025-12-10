@@ -300,13 +300,13 @@ impl DriverManger {
             }
 
             inf_list.clear();
-            for (_hardware, infInfo) in match_hardware_and_driver.iter() {
+            for (_hardware, match_info) in match_hardware_and_driver.iter() {
                 // 仅匹配第一个最佳的驱动
-                if let Some(InfInfo) = infInfo.first() {
+                if let Some((inf_info_item, entry)) = match_info.first() {
                     if let Err(e) = zip.extract_files_from_path(
                         driver_path,
                         password,
-                        &InfInfo.path,
+                        &inf_info_item.path,
                         &real_driver_path,
                     ) {
                         write_console(
@@ -315,7 +315,7 @@ impl DriverManger {
                         );
                         continue;
                     }
-                    inf_list.push(real_driver_path.join(InfInfo.path.clone()));
+                    inf_list.push(real_driver_path.join(inf_info_item.path.clone()));
                 }
             }
         }
