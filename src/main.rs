@@ -572,6 +572,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             export_path,
             inf,
             class,
+            exclude_class,
             provider,
         } => {
             // 创建临时目录
@@ -586,6 +587,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 export_path,
                 inf.as_deref(),
                 class.as_deref(),
+                exclude_class.as_deref(),
                 provider.as_deref(),
             ) {
                 Ok((success_count, fail_count, total_count)) => {
@@ -653,11 +655,17 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         Command::List {
             system_drive,
             class,
+            exclude_class,
             provider,
         } => {
             let driver_manger = DriverManger::new(system_drive)?;
 
-            match driver_manger.list_driver(system_drive, class.as_deref(), provider.as_deref()) {
+            match driver_manger.list_driver(
+                system_drive,
+                class.as_deref(),
+                exclude_class.as_deref(),
+                provider.as_deref(),
+            ) {
                 Ok(_) => Ok(()),
                 Err(e) => {
                     write_console(ConsoleType::Error, &e.to_string());

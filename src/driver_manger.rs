@@ -69,6 +69,8 @@ impl DriverManger {
     ///
     /// - `system_drive`: 系统盘路径
     /// - `class`: 驱动程序类名，可选，用于筛选特定类别的驱动程序
+    /// - `exclude_class`: 排除的驱动程序类名，可选，用于筛选出不包含指定类别的驱动程序
+    /// - `provider`: 驱动程序供应商名，可选，用于筛选出指定供应商的驱动程序
     ///
     /// # 返回值
     ///
@@ -77,8 +79,9 @@ impl DriverManger {
     pub fn list_driver(
         &self,
         system_drive: &Path,
-        class: Option<&str>,
-        provider: Option<&str>,
+        class: Option<&[String]>,
+        exclude_class: Option<&[String]>,
+        provider: Option<&[String]>,
     ) -> Result<()> {
         let system_root = system_drive.join("Windows");
 
@@ -134,14 +137,27 @@ impl DriverManger {
 
                 // 指定驱动类
                 if let Some(class) = class
-                    && !driver_info.class_name.eq_ignore_ascii_case(class)
+                    && !class
+                        .iter()
+                        .any(|c| driver_info.class_name.eq_ignore_ascii_case(c))
+                {
+                    continue;
+                }
+
+                // 排除指定驱动类
+                if let Some(exclude_class) = exclude_class
+                    && exclude_class
+                        .iter()
+                        .any(|c| driver_info.class_name.eq_ignore_ascii_case(c))
                 {
                     continue;
                 }
 
                 // 指定驱动厂商
                 if let Some(provider) = provider
-                    && !driver_info.provider_name.eq_ignore_ascii_case(provider)
+                    && !provider
+                        .iter()
+                        .any(|p| driver_info.provider_name.eq_ignore_ascii_case(p))
                 {
                     continue;
                 }
@@ -428,8 +444,10 @@ impl DriverManger {
     /// # 参数
     /// - `system_drive`: 系统盘路径
     /// - `out_path`: 导出路径
-    /// - `name`: 驱动名称
-    /// - `class`: 驱动类
+    /// - `inf`: 驱动INF文件名称，可选，用于筛选特定的驱动INF文件
+    /// - `class`: 驱动类，可选，用于筛选特定的驱动类
+    /// - `exclude_class`: 排除的驱动程序类名，可选，用于筛选出不包含指定类别的驱动程序
+    /// - `provider`: 驱动程序供应商名，可选，用于筛选出指定供应商的驱动程序
     ///
     /// # 返回值
     /// - `Ok(())`: 导出成功
@@ -439,8 +457,9 @@ impl DriverManger {
         system_drive: &Path,
         out_path: &Path,
         inf: Option<&str>,
-        class: Option<&str>,
-        provider: Option<&str>,
+        class: Option<&[String]>,
+        exclude_class: Option<&[String]>,
+        provider: Option<&[String]>,
     ) -> Result<(u32, u32, u32)> {
         let system_root = system_drive.join("Windows");
 
@@ -522,14 +541,27 @@ impl DriverManger {
 
                 // 指定驱动类
                 if let Some(class) = class
-                    && !driver_info.class_name.eq_ignore_ascii_case(class)
+                    && !class
+                        .iter()
+                        .any(|c| driver_info.class_name.eq_ignore_ascii_case(c))
+                {
+                    continue;
+                }
+
+                // 排除指定驱动类
+                if let Some(exclude_class) = exclude_class
+                    && exclude_class
+                        .iter()
+                        .any(|c| driver_info.class_name.eq_ignore_ascii_case(c))
                 {
                     continue;
                 }
 
                 // 指定驱动厂商
                 if let Some(provider) = provider
-                    && !driver_info.provider_name.eq_ignore_ascii_case(provider)
+                    && !provider
+                        .iter()
+                        .any(|p| driver_info.provider_name.eq_ignore_ascii_case(p))
                 {
                     continue;
                 }
@@ -607,14 +639,17 @@ impl DriverManger {
     /// 删除系统中的驱动
     /// # 参数
     /// - `systemDrive`: 系统盘
-    /// - `driveName`: 驱动名称（可选，None则删除所有驱动）
+    /// - `inf`: 驱动INF文件名称（可选，None则删除所有驱动）
     /// - `class`: 驱动类别（可选，None则删除所有驱动）
+    /// - `exclude_class`: 排除的驱动程序类名，可选，用于筛选出不包含指定类别的驱动程序
+    /// - `provider`: 驱动程序供应商名，可选，用于筛选出指定供应商的驱动程序
+    ///  - `all`: 是否删除所有驱动（可选，默认false）
     pub fn remove_driver(
         &self,
         system_drive: &Path,
         inf: Option<&str>,
-        class: Option<&str>,
-        provider: Option<&str>,
+        class: Option<&[String]>,
+        provider: Option<&[String]>,
         all: bool,
     ) -> Result<(u32, u32, u32)> {
         let system_root = system_drive.join("Windows");
@@ -676,14 +711,18 @@ impl DriverManger {
 
                 // 指定驱动类
                 if let Some(class) = class
-                    && !driver_info.class_name.eq_ignore_ascii_case(class)
+                    && !class
+                        .iter()
+                        .any(|c| driver_info.class_name.eq_ignore_ascii_case(c))
                 {
                     continue;
                 }
 
                 // 指定驱动厂商
                 if let Some(provider) = provider
-                    && !driver_info.provider_name.eq(provider)
+                    && !provider
+                        .iter()
+                        .any(|p| driver_info.provider_name.eq_ignore_ascii_case(p))
                 {
                     continue;
                 }

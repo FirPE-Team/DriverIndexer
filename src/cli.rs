@@ -177,12 +177,17 @@ pub enum Command {
         /// 指定驱动类别
         #[clap(short, long)]
         #[clap(help(t!("options.driver-category").to_string()))]
-        class: Option<String>,
+        class: Option<Vec<String>>,
+
+        /// 排除的驱动类别
+        #[clap(short = 'e', long)]
+        #[clap(help(t!("options.exclude-category").to_string()))]
+        exclude_class: Option<Vec<String>>,
 
         /// 指定驱动厂商
         #[clap(short, long)]
         #[clap(help(t!("options.driver-provider").to_string()))]
-        provider: Option<String>,
+        provider: Option<Vec<String>>,
     },
 
     /// 删除驱动子命令
@@ -207,12 +212,12 @@ pub enum Command {
         /// 指定驱动类别
         #[clap(short, long)]
         #[clap(help(t!("options.driver-category").to_string()))]
-        class: Option<String>,
+        class: Option<Vec<String>>,
 
         /// 指定驱动厂商
         #[clap(short, long)]
         #[clap(help(t!("options.driver-provider").to_string()))]
-        provider: Option<String>,
+        provider: Option<Vec<String>>,
 
         /// 是否删除所有驱动
         #[clap(short, long)]
@@ -231,12 +236,17 @@ pub enum Command {
         /// 指定驱动类别
         #[clap(short, long)]
         #[clap(help(t!("options.driver-category").to_string()))]
-        class: Option<String>,
+        class: Option<Vec<String>>,
+
+        /// 排除的驱动类别
+        #[clap(short = 'e', long)]
+        #[clap(help(t!("options.exclude-category").to_string()))]
+        exclude_class: Option<Vec<String>>,
 
         /// 指定驱动厂商
         #[clap(short, long)]
         #[clap(help(t!("options.driver-provider").to_string()))]
-        provider: Option<String>,
+        provider: Option<Vec<String>>,
     },
 
     /// 整理驱动子命令

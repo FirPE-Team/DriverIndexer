@@ -412,6 +412,7 @@ impl DriverInstaller {
     /// - `system_drive`: 系统盘（可选，None则全盘搜索[排除当前系统盘]）
     /// - `match_all`: 是否匹配全部设备（默认匹配未安装驱动的设备）
     /// - `drive_class`: 驱动类别（可选，None则加载所有驱动）
+    /// - `exclude_class`: 排除的驱动类别（可选，None则不排除）
     ///
     /// # 返回值
     /// - `Ok(())`: 成功加载驱动
