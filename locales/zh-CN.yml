@@ -79,7 +79,7 @@ driver-not-match-config: "驱动程序包与索引文件不匹配，请重新生
 no-driver-package: "在驱动程序包中未检测到驱动程序"
 no-found-driver-currently: "找不到当前需要安装驱动的设备"
 install-skipped: "跳过: %{name} (当前驱动已是最新或更佳)"
-install-success: "硬件: %{name}\n            设备: %{id}\n            类别: %{class}\n            驱动: %{driver}\n            版本: %{version}\n            日期: %{date}"
+install-success: "硬件: %{name}\n            描述: %{desc}\n            设备: %{id}\n            类别: %{class}\n            驱动: %{driver}\n            版本: %{version}\n            日期: %{date}"
 install-failed: "硬件: %{name}\n            设备: %{id}\n            信息: %{info}"
 driver-unzip-failed: "驱动程序解压失败"
 driver-unzip-success: "驱动程序解压成功"

@@ -79,7 +79,7 @@ driver-not-match-config: "驅動程式包與索引檔案不匹配，請重新生
 no-driver-package: "在驅動程式包中未偵測到驅動程式"
 no-found-driver-currently: "找不到目前需要安裝驅動的裝置"
 install-skipped: "跳過: %{name} (目前驅動已是最新或更佳)"
-install-success: "硬體: %{name}\n            裝置: %{id}\n            類別: %{class}\n            驅動: %{driver}\n            版本: %{version}\n            日期: %{date}"
+install-success: "硬體: %{name}\n            描述: %{desc}\n            裝置: %{id}\n            類別: %{class}\n            驅動: %{driver}\n            版本: %{version}\n            日期: %{date}"
 install-failed: "硬體: %{name}\n            裝置: %{id}\n            信息: %{info}"
 driver-unzip-failed: "驅動程式解壓縮失敗"
 driver-unzip-success: "驅動程式解壓縮成功"

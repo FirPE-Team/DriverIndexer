@@ -79,7 +79,7 @@ driver-not-match-config: "ドライバーパッケージとインデックスフ
 no-driver-package: "ドライバーパッケージ内にドライバーが検出されませんでした"
 no-found-driver-currently: "現在インストールが必要なドライバーのデバイスが見つかりません"
 install-skipped: "スキップ: %{name} (現在のドライバーは最新またはより良いものです)"
-install-success: "ハードウェア: %{name}\n            デバイス: %{id}\n            カテゴリ: %{class}\n            ドライバー: %{driver}\n            バージョン: %{version}\n            日付: %{date}"
+install-success: "ハードウェア: %{name}\n            説明: %{desc}\n            デバイス: %{id}\n            カテゴリ: %{class}\n            ドライバー: %{driver}\n            バージョン: %{version}\n            日付: %{date}"
 install-failed: "ハードウェア: %{name}\n            デバイス: %{id}\n            情報: %{info}"
 driver-unzip-failed: "ドライバーの解凍に失敗しました"
 driver-unzip-success: "ドライバーの解凍に成功しました"

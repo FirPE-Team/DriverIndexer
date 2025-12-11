@@ -79,7 +79,7 @@ driver-not-match-config: "Driver package does not match the index file, please r
 no-driver-package: "No drivers detected in the driver package"
 no-found-driver-currently: "Cannot find devices that need driver installation"
 install-skipped: "Skipped: %{name} (Current driver is up-to-date or better)"
-install-success: "Hardware: %{name}\n            Device: %{id}\n            Category: %{class}\n            Driver: %{driver}\n            Version: %{version}\n            Date: %{date}"
+install-success: "Hardware: %{name}\n            Description: %{desc}\n            Device: %{id}\n            Category: %{class}\n            Driver: %{driver}\n            Version: %{version}\n            Date: %{date}"
 install-failed: "Hardware: %{name}\n            Device: %{id}\n            Info: %{info}"
 driver-unzip-failed: "Driver decompression failed"
 driver-unzip-success: "Driver decompression successful"

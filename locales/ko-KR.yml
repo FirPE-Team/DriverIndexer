@@ -79,7 +79,7 @@ driver-not-match-config: "드라이버 패키지와 인덱스 파일이 일치�
 no-driver-package: "드라이버 패키지에서 드라이버가 감지되지 않았습니다"
 no-found-driver-currently: "현재 설치해야 할 드라이버의 장치를 찾을 수 없습니다"
 install-skipped: "건너뛰기: %{name} (현재 드라이버가 최신이거나 더 좋은 버전입니다)"
-install-success: "하드웨어: %{name}\n            장치: %{id}\n            카테고리: %{class}\n            드라이버: %{driver}\n            버전: %{version}\n            날짜: %{date}"
+install-success: "하드웨어: %{name}\n            설명: %{desc}\n            장치: %{id}\n            카테고리: %{class}\n            드라이버: %{driver}\n            버전: %{version}\n            날짜: %{date}"
 install-failed: "하드웨어: %{name}\n            장치: %{id}\n            정보: %{info}"
 driver-unzip-failed: "드라이버 압축 해제에 실패했습니다"
 driver-unzip-success: "드라이버 압축 해제에 성공했습니다"

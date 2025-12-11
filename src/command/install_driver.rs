@@ -379,15 +379,12 @@ impl DriverInstaller {
                             ConsoleType::Success,
                             &t!(
                                 "install-success",
-                                class = inf_info_item.class.clone(),
-                                name = entry.desc,
-                                id = hardware
-                                    .hardware_id
-                                    .first()
-                                    .unwrap_or(&"".to_string())
-                                    .clone(),
+                                class = inf_info_item.class,
+                                name = hardware.name,
+                                desc = entry.desc,
+                                id = hardware.hardware_id.first().unwrap_or(&"".to_string()),
                                 driver = inf_info_item.path,
-                                version = inf_info_item.version.clone(),
+                                version = inf_info_item.version,
                                 date = inf_info_item.date
                             ),
                         );
@@ -397,12 +394,8 @@ impl DriverInstaller {
                             ConsoleType::Error,
                             &t!(
                                 "install-failed",
-                                name = hardware.name.clone(),
-                                id = hardware
-                                    .hardware_id
-                                    .first()
-                                    .unwrap_or(&"".to_string())
-                                    .clone(),
+                                name = hardware.name,
+                                id = hardware.hardware_id.first().unwrap_or(&"".to_string()),
                                 info = e
                             ),
                         );
