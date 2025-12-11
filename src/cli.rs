@@ -90,7 +90,12 @@ pub enum Command {
         /// 驱动类别
         #[clap(short, long)]
         #[clap(help(t!("options.driver-category").to_string()))]
-        class: Option<String>,
+        class: Option<Vec<String>>,
+
+        /// 排除的驱动类别
+        #[clap(short = 'e', long)]
+        #[clap(help(t!("options.exclude-category").to_string()))]
+        exclude_class: Option<Vec<String>>,
 
         /// 是否仅解压驱动文件
         #[clap(short = 'x', long)]
@@ -119,7 +124,12 @@ pub enum Command {
         /// 驱动类别
         #[clap(short, long)]
         #[clap(help(t!("options.driver-category").to_string()))]
-        class: Option<String>,
+        class: Option<Vec<String>>,
+
+        /// 排除的驱动类别
+        #[clap(short = 'e', long)]
+        #[clap(help(t!("options.exclude-category").to_string()))]
+        exclude_class: Option<Vec<String>>,
     },
 
     /// 导入驱动子命令

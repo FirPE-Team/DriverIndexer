@@ -39,6 +39,7 @@ options:
   match-all-device: "匹配所有裝置"
   missing-only: "僅安裝缺失的驅動"
   driver-category: "驅動類別"
+  exclude-category: "排除驅動類別"
   extract_to: "僅解壓縮驅動程式而不安裝"
   force: "強制安裝驅動程式"
   rename: "重新命名驅動目錄"

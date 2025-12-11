@@ -38,6 +38,7 @@ options:
   package-password: "圧縮パッケージのパスワードを設定します"
   match-all-device: "すべてのデバイスを一致させます"
   missing-only: "不足しているドライバーのみをインストールします"
+  exclude-category: "ドライバーカテゴリを除外します"
   driver-category: "ドライバーカテゴリ"
   extract_to: "ドライバーを解凍するだけでインストールしません"
   force: "ドライバーを強制的にインストールします"

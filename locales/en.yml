@@ -38,6 +38,7 @@ options:
   match-all-device: "Match all devices"
   missing-only: "Only install missing drivers"
   driver-category: "Driver category"
+  exclude-category: "Exclude driver category"
   extract_to: "Only unzip drivers without installing"
   force: "Force install drivers"
   rename: "Rename driver directory"

@@ -49,7 +49,8 @@ impl DriverInstaller {
         password: Option<&str>,
         config: Option<&Path>,
         missing_only: bool,
-        class: Option<&str>,
+        class: Option<&[String]>,
+        exclude_class: Option<&[String]>,
         user_extract_path: Option<&Path>,
         force: bool,
     ) -> Result<()> {
@@ -172,7 +173,8 @@ impl DriverInstaller {
             if DEBUG.load(Ordering::Relaxed) {
                 write_console(ConsoleType::Debug, "Match hardware info");
             }
-            let match_hardware_and_driver = match_driver_info(&hwid_list, &config.drivers, class);
+            let match_hardware_and_driver =
+                match_driver_info(&hwid_list, &config.drivers, class, exclude_class);
             if match_hardware_and_driver.is_empty() {
                 if scan_count == 0 {
                     return Err(anyhow!(t!("no-found-driver-currently")));
@@ -425,7 +427,8 @@ impl DriverInstaller {
         &self,
         system_drive: Option<&Path>,
         missing_only: bool,
-        class: Option<&str>,
+        class: Option<&[String]>,
+        exclude_class: Option<&[String]>,
     ) -> Result<()> {
         if let Some(system_drive) = system_drive {
             let driver_path = system_drive
@@ -443,7 +446,16 @@ impl DriverInstaller {
                     path = driver_path.to_string_lossy().to_string()
                 ),
             );
-            return self.install_driver(&driver_path, None, None, missing_only, None, None, false);
+            return self.install_driver(
+                &driver_path,
+                None,
+                None,
+                missing_only,
+                class,
+                exclude_class,
+                None,
+                false,
+            );
         }
 
         // 未指定系统盘，全盘搜索离线系统驱动
@@ -463,7 +475,16 @@ impl DriverInstaller {
                     path = system_drive.to_string_lossy().to_string()
                 ),
             );
-            self.install_driver(&system_drive, None, None, missing_only, class, None, false)?;
+            self.install_driver(
+                &system_drive,
+                None,
+                None,
+                missing_only,
+                class,
+                exclude_class,
+                None,
+                false,
+            )?;
         }
         Ok(())
     }
@@ -684,7 +705,8 @@ struct MatchResult {
 pub fn match_driver_info(
     hardware_info_list: &[HardwareInfo],
     inf_info_list: &[InfInfo],
-    class_filter: Option<&str>,
+    class_filter: Option<&[String]>,
+    class_exclude: Option<&[String]>,
 ) -> Vec<(HardwareInfo, Vec<(InfInfo, HardwareEntry)>)> {
     // 当前系统架构
     let current_arch = match get_native_arch() {
@@ -716,7 +738,17 @@ pub fn match_driver_info(
         for inf_info in inf_info_list {
             // [Filter] 类别筛选 (Class)
             if let Some(cls) = class_filter {
-                if !inf_info.class.eq_ignore_ascii_case(cls) {
+                if !cls.iter().any(|c| inf_info.class.eq_ignore_ascii_case(c)) {
+                    continue;
+                }
+            }
+
+            // [Exclude] 类别排除 (Exclude Class)
+            if let Some(exclude_cls) = class_exclude {
+                if exclude_cls
+                    .iter()
+                    .any(|c| inf_info.class.eq_ignore_ascii_case(c))
+                {
                     continue;
                 }
             }

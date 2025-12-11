@@ -294,7 +294,7 @@ impl DriverManger {
 
             // 匹配驱动
             let match_hardware_and_driver =
-                command::match_driver_info(&hwid_list, &inf_info_list, None);
+                command::match_driver_info(&hwid_list, &inf_info_list, None, None);
             if match_hardware_and_driver.is_empty() {
                 return Err(anyhow!(t!("no-found-driver-currently")));
             }
@@ -302,7 +302,7 @@ impl DriverManger {
             inf_list.clear();
             for (_hardware, match_info) in match_hardware_and_driver.iter() {
                 // 仅匹配第一个最佳的驱动
-                if let Some((inf_info_item, entry)) = match_info.first() {
+                if let Some((inf_info_item, _entry)) = match_info.first() {
                     if let Err(e) = zip.extract_files_from_path(
                         driver_path,
                         password,

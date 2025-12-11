@@ -38,6 +38,7 @@ options:
   package-password: "압축 패키지 암호를 설정합니다"
   match-all-device: "모든 장치를 일치시킵니다"
   missing-only: "누락된 드라이버만 설치합니다"
+  exclude-category: "드라이버 카테고리를 제외합니다"
   driver-category: "드라이버 카테고리"
   extract_to: "드라이버를 압축 해제만 하고 설치하지 않습니다"
   force: "드라이버를 강제로 설치합니다"

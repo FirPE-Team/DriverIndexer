@@ -100,6 +100,7 @@ fn main() {
             false,
             None,
             None,
+            None,
             false,
         ) {
             Ok(_) => Ok(()),
@@ -278,6 +279,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             password,
             missing_only,
             class,
+            exclude_class,
             extract_to: extract_path,
             force,
         } => {
@@ -377,6 +379,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                             index.as_deref(),
                             *missing_only,
                             class.as_deref(),
+                            exclude_class.as_deref(),
                             extract_path.as_deref(),
                             *force,
                         )
@@ -400,6 +403,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                     index_path.as_deref(),
                     *missing_only,
                     class.as_deref(),
+                    exclude_class.as_deref(),
                     extract_path.as_deref(),
                     *force,
                 ) {
@@ -417,6 +421,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             system_drive,
             missing_only,
             class,
+            exclude_class,
         } => {
             // 创建临时目录
             if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
@@ -435,6 +440,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 system_drive.as_deref(),
                 *missing_only,
                 class.as_deref(),
+                exclude_class.as_deref(),
             ) {
                 Ok(_) => Ok(()),
                 Err(e) => {
