@@ -122,6 +122,7 @@ not-found-virtual-drive: "ドライバーレスデバイスの仮想ドライブ
 organize-driver-success: "ドライバーの整理が完了しました"
 organize-driver-failed: "ドライバーの整理に失敗しました"
 
-# ドライバーの作成
+# ドライバープログラムパッケージの作成
+driver-pack-info: "ドライバープログラムパッケージの作成"
 pack-driver-success: "ドライバーパッケージの作成に成功しました"
 pack-driver-failed: "ドライバーパッケージの作成に失敗しました"

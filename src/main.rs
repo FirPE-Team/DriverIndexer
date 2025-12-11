@@ -708,6 +708,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 );
             };
 
+            write_console(ConsoleType::Info, &t!("driver-pack-info"));
             match command::pack_driver_program(drive_path, program_path, password.as_deref()) {
                 Ok(_) => {
                     write_console(ConsoleType::Success, &t!("pack-driver-success"));

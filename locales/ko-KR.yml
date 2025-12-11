@@ -122,6 +122,7 @@ not-found-virtual-drive: "드라이버 없는 장치의 가상 드라이브를 �
 organize-driver-success: "드라이버 정리가 완료되었습니다"
 organize-driver-failed: "드라이버 정리에 실패했습니다"
 
-# 드라이버 생성
-pack-driver-success: "드라이버 패키지 생성에 성공했습니다"
-pack-driver-failed: "드라이버 패키지 생성에 실패했습니다"
+# 드라이버 프로그램 패키지 생성
+driver-pack-info: "드라이버 프로그램 패키지 생성"
+pack-driver-success: "드라이버 프로그램 패키지 생성에 성공했습니다"
+pack-driver-failed: "드라이버 프로그램 패키지 생성에 실패했습니다"

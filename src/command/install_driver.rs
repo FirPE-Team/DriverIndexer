@@ -1,3 +1,4 @@
+use crate::command::check_if_bundled;
 use crate::driver_index::{DriverArch, DriverIndex, HardwareEntry, InfInfo};
 use crate::hardware::{enumerate_hardware, update_driver_for_plug_and_play_devices, HardwareInfo};
 use crate::utils::console::{write_console, ConsoleType};
@@ -72,42 +73,47 @@ impl DriverInstaller {
         let config = match config_path {
             Some(config_path) => {
                 if let Ok(config) = DriverIndex::from_json(&config_path) {
-                    // 索引文件解析成功，校验索引文件是否与驱动包匹配
-                    let driver_size = driver_pack_path
-                        .metadata()
-                        .with_context(|| "get driver pack size failed")?
-                        .len();
-
-                    // 获取驱动包修改时间戳
-                    let timestamp = driver_pack_path
-                        .metadata()
-                        .with_context(|| {
-                            format!("get drive path metadata {}", driver_pack_path.display())
-                        })?
-                        .modified()
-                        .with_context(|| {
-                            format!("get drive path modified {}", driver_pack_path.display())
-                        })?
-                        .duration_since(UNIX_EPOCH)
-                        .with_context(|| {
-                            format!(
-                                "get drive path duration since unix epoch {}",
-                                driver_pack_path.display()
-                            )
-                        })?
-                        .as_secs();
-                    if driver_size != config.size || timestamp != config.timestamp {
-                        // 驱动包与索引文件不匹配，即时建立索引文件
-                        write_console(ConsoleType::Warning, &t!("driver-not-match-config"));
-                        write_console(ConsoleType::Info, &t!("create-index-info"));
-                        self.build_config(driver_pack_path, password, &extract_path)?
-                    } else {
-                        // 校验通过，加载索引文件
-                        write_console(
-                            ConsoleType::Info,
-                            &format!("{}: {}", t!("load-index"), config_path.display()),
-                        );
+                    // 校验是否为自解压驱动包
+                    if check_if_bundled().is_some() {
                         config
+                    } else {
+                        // 索引文件解析成功，校验索引文件是否与驱动包匹配
+                        let driver_size = driver_pack_path
+                            .metadata()
+                            .with_context(|| "get driver pack size failed")?
+                            .len();
+
+                        // 获取驱动包修改时间戳
+                        let timestamp = driver_pack_path
+                            .metadata()
+                            .with_context(|| {
+                                format!("get drive path metadata {}", driver_pack_path.display())
+                            })?
+                            .modified()
+                            .with_context(|| {
+                                format!("get drive path modified {}", driver_pack_path.display())
+                            })?
+                            .duration_since(UNIX_EPOCH)
+                            .with_context(|| {
+                                format!(
+                                    "get drive path duration since unix epoch {}",
+                                    driver_pack_path.display()
+                                )
+                            })?
+                            .as_secs();
+                        if driver_size != config.size || timestamp != config.timestamp {
+                            // 驱动包与索引文件不匹配，即时建立索引文件
+                            write_console(ConsoleType::Warning, &t!("driver-not-match-config"));
+                            write_console(ConsoleType::Info, &t!("create-index-info"));
+                            self.build_config(driver_pack_path, password, &extract_path)?
+                        } else {
+                            // 校验通过，加载索引文件
+                            write_console(
+                                ConsoleType::Info,
+                                &format!("{}: {}", t!("load-index"), config_path.display()),
+                            );
+                            config
+                        }
                     }
                 } else {
                     // 索引文件解析失败，即时建立索引文件

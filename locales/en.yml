@@ -122,6 +122,7 @@ not-found-virtual-drive: "No virtual CD-ROM of driver-free devices found"
 organize-driver-success: "Driver organization completed"
 organize-driver-failed: "Driver organization failed"
 
-# Create driver
+# Create driver package
+driver-pack-info: "Create driver package"
 pack-driver-success: "Driver package creation successful"
 pack-driver-failed: "Driver package creation failed"
