@@ -122,9 +122,10 @@ not-found-virtual-drive: "没有找到免驱设备虚拟光驱"
 organize-driver-success: "整理驱动完成"
 organize-driver-failed: "整理驱动失败"
 
-# 创建驱动
-pack-driver-success: "创建驱动包成功"
-pack-driver-failed: "创建驱动包失败"
+# 创建驱动程序包
+driver-pack-info: "创建驱动程序包"
+pack-driver-success: "创建驱动程序包成功"
+pack-driver-failed: "创建驱动程序包失败"
 
 # 解密密码
 decrypt-password-failed: "解密密码失败"

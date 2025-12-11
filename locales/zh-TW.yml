@@ -122,6 +122,7 @@ not-found-virtual-drive: "沒有找到免驅動裝置虛擬光碟機"
 organize-driver-success: "整理驅動完成"
 organize-driver-failed: "整理驅動失敗"
 
-# 建立驅動
-pack-driver-success: "建立驅動包成功"
-pack-driver-failed: "建立驅動包失敗"
+# 建立驅動程式包
+driver-pack-info: "建立驅動程式包"
+pack-driver-success: "建立驅動程式包成功"
+pack-driver-failed: "建立驅動程式包失敗"
