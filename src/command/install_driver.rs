@@ -210,8 +210,8 @@ impl DriverInstaller {
                             hardware.hardware_id.join(","),
                             driver_info
                                 .iter()
-                                .map(|(inf_info, _entry)| inf_info.path.clone())
-                                .collect::<Vec<String>>()
+                                .map(|(inf_info, _entry)| inf_info.path.as_str())
+                                .collect::<Vec<&str>>()
                                 .join("\n            ")
                         ),
                     );
@@ -224,8 +224,12 @@ impl DriverInstaller {
                     None => extract_path.clone(),
                     Some(path) => PathBuf::from(path),
                 };
+                // 克隆硬件信息和驱动匹配信息用于线程
                 let hardware = hardware.clone();
-                let match_info = driver_info.clone();
+                let match_info: Vec<(InfInfo, HardwareEntry)> = driver_info
+                    .iter()
+                    .map(|(inf, entry)| ((*inf).clone(), (*entry).clone()))
+                    .collect();
                 let tx = tx.clone();
                 let zip = self.zip.clone();
 
@@ -668,11 +672,11 @@ enum MatchType {
 }
 
 // 用于排序的临时结构
-struct MatchResult {
-    /// 硬件条目
-    entry: HardwareEntry,
-    ///INF 信息
-    inf_info: InfInfo,
+struct MatchResult<'a> {
+    /// 硬件条目引用
+    entry: &'a HardwareEntry,
+    ///INF 信息引用
+    inf_info: &'a InfInfo,
     /// 匹配类型
     score: MatchType,
 }
@@ -702,12 +706,12 @@ struct MatchResult {
 ///
 /// # 返回值
 /// - `Vec<(HwID, Vec<InfInfo>)>` - 匹配驱动信息列表
-pub fn match_driver_info(
-    hardware_info_list: &[HardwareInfo],
-    inf_info_list: &[InfInfo],
+pub fn match_driver_info<'a>(
+    hardware_info_list: &'a [HardwareInfo],
+    inf_info_list: &'a [InfInfo],
     class_filter: Option<&[String]>,
     class_exclude: Option<&[String]>,
-) -> Vec<(HardwareInfo, Vec<(InfInfo, HardwareEntry)>)> {
+) -> Vec<(&'a HardwareInfo, Vec<(&'a InfInfo, &'a HardwareEntry)>)> {
     // 当前系统架构
     let current_arch = match get_native_arch() {
         // x86
@@ -784,8 +788,8 @@ pub fn match_driver_info(
             if best_inf_score > MatchType::None {
                 if let Some(entry) = best_entry {
                     matched_infs.push(MatchResult {
-                        entry: entry.clone(),
-                        inf_info: inf_info.clone(),
+                        entry,
+                        inf_info,
                         score: best_inf_score,
                     });
                 }
@@ -814,13 +818,13 @@ pub fn match_driver_info(
         });
 
         // 提取排序后的 INF 引用
-        let sorted_infs: Vec<(InfInfo, HardwareEntry)> = matched_infs
+        let sorted_infs: Vec<(&'a InfInfo, &'a HardwareEntry)> = matched_infs
             .into_iter()
             .map(|m| (m.inf_info, m.entry))
             .collect();
 
         if !sorted_infs.is_empty() {
-            results.push((device.clone(), sorted_infs));
+            results.push((device, sorted_infs));
         }
     }
 
