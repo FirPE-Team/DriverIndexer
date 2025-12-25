@@ -90,6 +90,9 @@ driver-install-success: "ドライバーのインストールに成功しまし�
 install-offline-driver: "オフラインシステムドライバーをインストール (%{path})"
 not-found-offline-system: "オフラインWindowsシステムが見つかりませんでした"
 
+# ドライバーの列挙
+no-driver-found: "ドライバーライブラリにサードパーティードライバーが見つかりませんでした"
+
 # ドライバーのインポート
 offline-Arch-Err: "オフラインシステムのアーキテクチャの取得に失敗しました"
 driver-import-info: "ドライバーをインポート"

@@ -52,12 +52,14 @@ pub fn create_index(
     } else {
         // 从文件中创建索引文件
         inf_parent_path = TEMP_PATH.join(drive_path.file_stem().unwrap());
+
         // 解压全部INF文件
         if let Err(e) = zip.extract_files_from_path(drive_path, password, "*.inf", &inf_parent_path)
         {
             drop(zip);
             return Err(anyhow!("{}: {}", t!("driver-unzip-failed"), e));
         }
+
         // 解压全部 CAT 文件
         let _ = zip.extract_files_from_path(drive_path, password, "*.cat", &inf_parent_path);
 

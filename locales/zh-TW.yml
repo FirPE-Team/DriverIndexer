@@ -90,6 +90,9 @@ driver-install-success: "驅動程式安裝成功"
 install-offline-driver: "安裝離線系統驅動 (%{path})"
 not-found-offline-system: "沒有找到離線系統"
 
+# 列舉驅動
+no-driver-found: "驅動程式庫中沒有第三方驅動"
+
 # 匯入驅動
 offline-Arch-Err: "取得離線系統架構失敗"
 driver-import-info: "匯入驅動"

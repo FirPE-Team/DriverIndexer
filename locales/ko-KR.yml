@@ -90,6 +90,9 @@ driver-install-success: "드라이버 설치에 성공했습니다"
 install-offline-driver: "오프라인 시스템 드라이버 설치 (%{path})"
 not-found-offline-system: "오프라인 Windows 시스템을 찾을 수 없습니다"
 
+# 드라이버 나열
+no-driver-found: "드라이버 라이브러리에 세드라이버가 없습니다"
+
 # 드라이버 가져오기
 offline-Arch-Err: "오프라인 시스템 아키텍처 가져오기에 실패했습니다"
 driver-import-info: "드라이버 가져오기"

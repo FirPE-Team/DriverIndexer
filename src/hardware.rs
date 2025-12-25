@@ -1,8 +1,7 @@
 use crate::utils::setupapi::SetupAPI;
 use anyhow::{Context, Result};
-use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
-use windows::core::{BOOL, GUID};
+use windows::core::{BOOL, GUID, HSTRING};
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
     CM_Get_DevNode_Status, UpdateDriverForPlugAndPlayDevicesW, CM_DEVNODE_STATUS_FLAGS, CM_PROB,
     CM_PROB_DISABLED, CM_PROB_FAILED_INSTALL, CM_PROB_NOT_CONFIGURED, CM_PROB_REINSTALL, CR_SUCCESS,
@@ -268,8 +267,8 @@ pub fn update_driver_for_plug_and_play_devices(
     force: bool,
 ) -> std::result::Result<(), windows::core::Error> {
     // 将硬件 ID 和 INF 文件路径转换为宽字符串
-    let hardware_id_w: Vec<u16> = hardware_id.encode_utf16().chain(Some(0)).collect();
-    let inf_path_w: Vec<u16> = inf_path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let hardware_id_w = HSTRING::from(hardware_id);
+    let inf_path_w = HSTRING::from(inf_path);
 
     // 调用 Windows API 函数 UpdateDriverForPlugAndPlayDevicesW 进行驱动程序更新
     let mut isReboot = BOOL(0);

@@ -2,7 +2,7 @@ use crate::utils::utils::write_embed_file;
 use crate::TEMP_PATH;
 use anyhow::{anyhow, Context, Result};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 
 #[derive(Debug, Clone)]
 pub struct SevenZip {
@@ -42,7 +42,7 @@ impl SevenZip {
             // 指定7z格式
             .arg("-t7z")
             .arg(out_path)
-            .arg(format!("{}\\*", input_path.to_str().unwrap()))
+            .arg(format!("{}\\*", input_path.to_string_lossy()))
             // 极限压缩
             .arg("-mx=9")
             // 固实压缩（8MB分块）
@@ -53,10 +53,47 @@ impl SevenZip {
             .arg("-r")
             .output()
             .with_context(|| "7-zip create archive failed")?;
-        let content = String::from_utf8_lossy(&output.stdout);
-        if !content.contains("Everything is Ok") {
-            return Err(anyhow!("{}", content));
+        self.check_7z_output(output)?;
+        Ok(())
+    }
+
+    /// 7-zip 解压文件
+    /// 提取具有完整路径的文件（递归子目录）
+    /// 可用于解压指定文件（inf）
+    ///
+    /// # 参数
+    /// - `archive_path`: 压缩包路径
+    /// - `password`: 压缩包密码
+    /// - `extract_path`: 压缩包内文件路径（解压全部文件为*）
+    /// - `out_path`: 输出路径
+    ///
+    /// # 返回值
+    /// - `Ok(())`: 解压成功
+    /// - `Err()`: 解压失败，返回错误信息
+    pub fn extract_files_from_path(
+        &self,
+        archive_path: &Path,
+        password: Option<&str>,
+        extract_path: &str,
+        out_path: &Path,
+    ) -> Result<()> {
+        let mut cmd = Command::new(&self.zip_program);
+        cmd.arg("x")
+            .arg("-r")
+            .arg(archive_path.to_string_lossy().to_string());
+
+        // 当 extract_path 不为空时添加该参数
+        if !extract_path.is_empty() {
+            cmd.arg(extract_path);
         }
+
+        cmd.arg("-y")
+            .arg("-aos")
+            .arg(format!("-p{}", password.unwrap_or("")))
+            .arg(format!("-o{}", out_path.to_string_lossy()));
+
+        let output = cmd.output()?;
+        self.check_7z_output(output)?;
         Ok(())
     }
 
@@ -82,61 +119,14 @@ impl SevenZip {
     ) -> Result<()> {
         let output = Command::new(&self.zip_program)
             .arg("e")
-            .arg(archive_path.to_str().unwrap())
+            .arg(archive_path.to_string_lossy().to_string())
             .arg(extract_path)
             .arg("-y")
             .arg("-aos")
             .arg(format!("-p{}", password.unwrap_or("")))
-            .arg(format!("-o{}", out_path.to_str().unwrap()))
+            .arg(format!("-o{}", out_path.to_string_lossy()))
             .output()?;
-        let content = String::from_utf8_lossy(&output.stdout);
-        if content.contains("No files to process")
-            || content.contains("Errors")
-            || content.contains("Can't open as archive")
-        {
-            return Err(anyhow!("{}", content));
-        }
-        Ok(())
-    }
-
-    /// 7-zip 解压文件
-    /// 提取具有完整路径的文件（递归子目录）
-    /// 可用于解压指定文件（inf）
-    ///
-    /// # 参数
-    /// - `archive_path`: 压缩包路径
-    /// - `password`: 压缩包密码
-    /// - `extract_path`: 压缩包内文件路径（解压全部文件为*）
-    /// - `out_path`: 输出路径
-    ///
-    /// # 返回值
-    /// - `Ok(())`: 解压成功
-    /// - `Err()`: 解压失败，返回错误信息
-    pub fn extract_files_from_path(
-        &self,
-        archive_path: &Path,
-        password: Option<&str>,
-        extract_path: &str,
-        out_path: &Path,
-    ) -> Result<()> {
-        let output = Command::new(&self.zip_program)
-            .arg("x")
-            .arg("-r")
-            .arg(archive_path.to_str().unwrap())
-            .arg(extract_path)
-            .arg("-y")
-            .arg("-aos")
-            .arg(format!("-p{}", password.unwrap_or("")))
-            .arg(format!("-o{}", out_path.to_str().unwrap()))
-            .output()?;
-        let content = String::from_utf8_lossy(&output.stdout);
-
-        if content.contains("No files to process")
-            || content.contains("Errors")
-            || content.contains("Can't open as archive")
-        {
-            return Err(anyhow!("{}", content));
-        }
+        self.check_7z_output(output)?;
         Ok(())
     }
 
@@ -155,7 +145,7 @@ impl SevenZip {
             .arg(format!("-p{}", password.unwrap_or("")))
             .arg("-ba")
             .arg("-sccUTF-8")
-            .arg(path.to_str().unwrap())
+            .arg(path.to_string_lossy().to_string())
             .output()?;
         let content = String::from_utf8_lossy(&output.stdout);
 
@@ -179,9 +169,8 @@ impl SevenZip {
             .arg("l")
             .arg("-ba")
             .arg("-sccUTF-8")
-            .arg(archive_path.to_str().unwrap())
+            .arg(archive_path.to_string_lossy().to_string())
             .output()?;
-
         let content = String::from_utf8_lossy(&output.stdout);
 
         // 查找索引文件（.index文件）
@@ -209,5 +198,50 @@ impl SevenZip {
         }
 
         Ok(())
+    }
+
+    /// 检查 7-zip 命令输出是否成功
+    ///
+    /// # 参数
+    /// - `output`: 7-zip 命令输出
+    ///
+    /// # 返回值
+    /// - `Ok(())`: 命令执行成功
+    /// - `Err()`: 命令执行失败，返回错误信息
+    fn check_7z_output(&self, output: Output) -> Result<()> {
+        // 获取退出状态码
+        let exit_code = output.status.code().unwrap_or(-1);
+
+        if output.status.success() {
+            return Ok(());
+        }
+
+        // 提取错误信息
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        // 根据状态码分类处理
+        let error_msg = match exit_code {
+            1 => format!("7z Warning: Some files might be in use.\n{}", stdout),
+            2 => {
+                if stdout.contains("Wrong password") || stderr.contains("Wrong password") {
+                    "7z Error: Wrong password.".to_string()
+                } else if stdout.contains("Can't open as archive") {
+                    "7z Error: File is not a valid archive.".to_string()
+                } else {
+                    format!("7z Fatal Error.\n{}\n{}", stdout, stderr.trim())
+                }
+            }
+            7 => format!("7z Error: Command line parameter error.\n{}", stderr.trim()),
+            8 => "7z Error: Not enough memory.".to_string(),
+            _ => format!(
+                "7z exited with code {}.\n{}\n{}",
+                exit_code,
+                stdout,
+                stderr.trim()
+            ),
+        };
+
+        Err(anyhow!(error_msg))
     }
 }

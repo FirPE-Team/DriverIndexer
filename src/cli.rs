@@ -328,17 +328,24 @@ fn exist_dir_parser(directory: &str) -> Result<PathBuf, String> {
 fn exist_file_wildcard_parser(path: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(normalize_drive_root(path));
 
-    let file_name = path.file_name().unwrap().to_string_lossy();
-    if file_name.contains('*') || file_name.contains('?') {
-        return if path.parent().unwrap().exists() {
-            Ok(path)
-        } else {
-            Err(t!("value-parser.path-not-exist").to_string())
-        };
+    // 检查路径是否包含通配符
+    if let Some(file_name) = path.file_name() {
+        let file_name = file_name.to_string_lossy();
+        if file_name.contains('*') || file_name.contains('?') {
+            return if let Some(parent) = path.parent() {
+                if !parent.exists() {
+                    return Err(t!("value-parser.path-not-exist").to_string());
+                }
+                Ok(path)
+            } else {
+                Err(t!("value-parser.path-not-exist").to_string())
+            };
+        }
     }
     if !path.exists() {
         return Err(t!("value-parser.path-not-exist").to_string());
     }
+
     Ok(path)
 }
 

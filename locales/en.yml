@@ -79,8 +79,8 @@ driver-not-match-config: "Driver package does not match the index file, please r
 no-driver-package: "No drivers detected in the driver package"
 no-found-driver-currently: "Cannot find devices that need driver installation"
 install-skipped: "Skipped: %{name} (Current driver is up-to-date or better)"
-install-success: "Hardware: %{name}\n            Description: %{desc}\n            Device: %{id}\n            Category: %{class}\n            Driver: %{driver}\n            Version: %{version}\n            Date: %{date}"
-install-failed: "Hardware: %{name}\n            Device: %{id}\n            Info: %{info}"
+install-success: "Hardware: %{name}\n               Description: %{desc}\n               Device: %{id}\n               Category: %{class}\n               Driver: %{driver}\n               Version: %{version}\n               Date: %{date}"
+install-failed: "Hardware: %{name}\n               Device: %{id}\n               Info: %{info}"
 driver-unzip-failed: "Driver decompression failed"
 driver-unzip-success: "Driver decompression successful"
 driver-install-failed: "Driver installation failed"
@@ -89,6 +89,9 @@ driver-install-success: "Driver installation successful"
 # Load offline driver
 install-offline-driver: "Installing offline system drivers (%{path})"
 not-found-offline-system: "No offline system found"
+
+# List driver
+no-driver-found: "No third-party drivers found in the driver library"
 
 # Import driver
 offline-Arch-Err: "Failed to get offline system architecture"

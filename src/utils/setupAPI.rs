@@ -1,8 +1,7 @@
 use anyhow::{anyhow, Context, Result};
-use std::ffi::{c_void, OsStr};
-use std::os::windows::ffi::OsStrExt;
+use std::ffi::c_void;
 use std::path::Path;
-use windows::core::{GUID, PCWSTR};
+use windows::core::{GUID, HSTRING, PCWSTR};
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
     CM_Locate_DevNodeW, CM_Reenumerate_DevNode, SetupCloseInfFile, SetupDiClassGuidsFromNameExW,
     SetupDiGetClassDescriptionW, SetupFindFirstLineW, SetupFindNextLine, SetupGetFieldCount, SetupGetStringFieldW,
@@ -53,10 +52,8 @@ impl SetupAPI {
     /// - `Ok(Vec<GUID>)`: 成功返回GUID列表
     /// - `Err(e)`: 失败则返回错误信息
     pub fn get_class_guids_from_name(class_name: &str) -> Result<Vec<GUID>> {
-        let class_name_wide: Vec<u16> = OsStr::new(class_name)
-            .encode_wide()
-            .chain(Some(0))
-            .collect();
+        // 将类名转换为宽字符串
+        let class_name_wide = HSTRING::from(class_name);
 
         // 先尝试使用一个小的缓冲区
         let mut guid_list = vec![GUID::default(); 1];
@@ -130,8 +127,9 @@ impl SetupAPI {
     /// - `Ok(GUID)`: 成功返回GUID
     /// - `Err(e)`: 失败则返回错误信息
     pub fn get_guid_from_str(guid_str: &str) -> Result<GUID> {
-        let guid_wide: Vec<u16> = OsStr::new(guid_str).encode_wide().chain(Some(0)).collect();
-        let guid = unsafe { CLSIDFromString(PCWSTR(guid_wide.as_ptr())) }
+        // 将guid字符串转换为宽字符串
+        let guid_hstring = HSTRING::from(guid_str);
+        let guid = unsafe { CLSIDFromString(PCWSTR(guid_hstring.as_ptr())) }
             .with_context(|| "CLSIDFromString failed")?;
         Ok(guid)
     }
@@ -144,10 +142,11 @@ impl SetupAPI {
     /// # 返回值
     /// - `*mut c_void`: 成功返回inf文件句柄，失败返回`null_mut()`
     pub fn open_inf_file(inf_path: &Path) -> Result<*mut c_void> {
-        let inf_wide: Vec<u16> = inf_path.as_os_str().encode_wide().chain(Some(0)).collect();
+        // 将inf文件路径转换为宽字符串
+        let inf_hstring = HSTRING::from(inf_path);
         unsafe {
             let handle = SetupOpenInfFileW(
-                PCWSTR(inf_wide.as_ptr()),
+                PCWSTR(inf_hstring.as_ptr()),
                 None,
                 INF_STYLE_OLDNT | INF_STYLE_WIN4,
                 None,
@@ -184,11 +183,14 @@ impl SetupAPI {
         section: &str,
         key: Option<&str>,
     ) -> Result<INFCONTEXT> {
-        let section_wide: Vec<u16> = OsStr::new(section).encode_wide().chain(Some(0)).collect();
+        // 将section转换为宽字符串
+        let section_wide = HSTRING::from(section);
+
+        // 将key转换为宽字符串
         let key_wide = match key {
             Some(key) => {
-                let key_wide: Vec<u16> = OsStr::new(key).encode_wide().chain(Some(0)).collect();
-                PCWSTR(key_wide.as_ptr())
+                let key_hstring = HSTRING::from(key);
+                PCWSTR(key_hstring.as_ptr())
             }
             None => PCWSTR::null(),
         };

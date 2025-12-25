@@ -1,6 +1,6 @@
 # DriverIndexer
 
-[简体中文](README.zh.md) [English](README.md)
+简体中文 | [English](README.md)
 
 ## 简介
 
@@ -28,6 +28,18 @@
 
 通过索引，程序能够迅速确定设备所需的驱动程序，从而实现精准的按需解压和安装。
 
+### 驱动包获取网站
+
+> 我们更提倡自己下载、搜集驱动包，如有需求也可自行提取目前各个驱动软件内的驱动包（一般此类驱动包无版权）
+
+以下为推荐的驱动包下载网站（均免费、无加密）
+
+- [SamDrivers](https://driveroff.net)
+- [DriverPack](https://drp.su/en/foradmin?_blank)
+- [3DP](https://www.3dpchip.com/3dpchip/3dp/net_down.php?_blank)
+- [DriverOff](https://driveroff.net/category/dp?_blank)
+- [BatPEDriver](http://forum.ru-board.com/topic.cgi?forum=62&topic=24098&start=71&limit=1&m=1#1?_blank)
+
 ## 软件架构
 
 使用`Rust`语言编写，调用 WindowsAPI 获取硬件信息、安装设备驱动。
@@ -38,8 +50,12 @@
 
 1. 匹配当前系统架构
 2. 匹配当前操作系统版本
-3. 匹配当前设备的硬件 ID
-4. 匹配当前设备的兼容 ID
+3. 匹配硬件信息
+
+    - 设备硬件ID vs 驱动文件硬件ID
+    - 设备硬件ID vs 驱动文件兼容ID
+    - 设备兼容ID vs 驱动文件硬件ID
+    - 设备兼容ID vs 驱动文件兼容ID
 
 ### 驱动排序规则
 
@@ -61,7 +77,9 @@
 
 - 选项
 
-    - `--password <密码>`：指定驱动包密码
+| **参数**            | **短参数** | **描述**           |
+|-------------------|---------|------------------|
+| `--password <密码>` | `-p`    | 指定驱动包密码，用于解压驱动包。 |
 
 - 示例
     - `DriverIndexer.exe index D:\netcard D:\index.json`
@@ -71,7 +89,7 @@
 
 使用索引文件或直接指定驱动包路径进行安装。
 
-`DriverIndexer.exe install <驱动包/目录路径> [索引文件路径] [选项]`
+`DriverIndexer.exe install <驱动包/目录路径> [选项]`
 
 - 驱动路径格式：压缩包（限 7zip 所支持的格式）、目录格式。
 - 支持通配符(`*`、`?`)，用于匹配多个驱动包。
@@ -79,17 +97,22 @@
 
 - 选项
 
-    - `--password <密码>`：指定驱动包密码，用于解压驱动包。
-    - `--class <驱动类别>`：指定驱动类别，仅安装指定类别驱动。
-    - `--missing-only`：仅安装未安装驱动的设备，默认安装所有匹配设备的驱动。
-    - `--extract-path <解压目录>`：仅解压驱动，不安装驱动。默认解压到临时目录。
+  | **参数**                 | **短参数** | **描述**                              |
+                          |------------------------|---------|-------------------------------------|
+  | `--index-path <路径>`    | `-i`    | 指定索引文件路径，用于加速安装。不指定时将自动创建临时索引。      |
+  | `--password <密码>`      | `-p`    | 指定驱动包密码，用于解压驱动包。                    |
+  | `--class <类别>`         | `-c`    | **包含**指定的驱动类别，仅安装匹配类别的驱动。多个类别可重复指定。 |
+  | `--exclude-class <类别>` | `-e`    | **排除**指定的驱动类别，不安装指定类别的驱动。多个类别可重复指定。 |
+  | `--missing-only`       | `-m`    | 仅安装未安装驱动的设备（即驱动缺失的设备）。              |
+  | `--extract-path <目录>`  | `-x`    | 仅解压驱动到指定目录，不执行安装操作。默认解压到临时目录。       |
+  | `--force`              | `-f`    | 强制安装，覆盖现有驱动。                        |
 
 - 示例
     - `DriverIndexer.exe install D:\netcard`
     - `DriverIndexer.exe install D:\netcard.7z`
     - `DriverIndexer.exe install D:\netcard\*.7z`
-    - `DriverIndexer.exe install D:\netcard.7z netcard.json`
-    - `DriverIndexer.exe install D:\netcard\*.7z D:\netcard\*.json`
+    - `DriverIndexer.exe install D:\netcard.7z --index-path D:\netcard.json`
+    - `DriverIndexer.exe install D:\netcard\*.7z --index-path D:\netcard\*.json`
 
 ### 安装离线系统驱动
 
@@ -98,8 +121,12 @@
 `DriverIndexer.exe install-offline [系统盘路径]`
 
 - 选项
-    - `--missing-only`：仅安装未安装驱动的设备，默认安装所有匹配设备的驱动。
-    - `--class <驱动类别>`：仅安装指定类别驱动。
+
+| **参数**                 | **短参数** | **描述**                              |
+|------------------------|---------|-------------------------------------|
+| `--missing-only`       | `-m`    | 仅安装未安装驱动的设备（即驱动缺失的设备）。              |
+| `--class <类别>`         | `-c`    | **包含**指定的驱动类别，仅安装匹配类别的驱动。多个类别可重复指定。 |
+| `--exclude-class <类别>` | `-e`    | **排除**指定的驱动类别，不安装指定类别的驱动。多个类别可重复指定。 |
 
 ### 查看驱动索引信息
 
@@ -117,8 +144,18 @@
 `DriverIndexer.exe list <系统盘路径>`
 
 - 选项
-    - `--class <驱动类别>`：指定驱动类别，仅显示指定类别驱动。
-    - `--provider <驱动供应商>`：指定驱动供应商，仅显示指定供应商驱动。
+
+| **参数**                   | **短参数** | **描述**                                |
+|--------------------------|---------|---------------------------------------|
+| `--class <驱动类别>`         | `-c`    | **包含**指定的驱动类别，仅显示指定类别驱动。多个类别可重复指定。    |
+| `--exclude-class <驱动类别>` | `-e`    | **排除**指定的驱动类别，不显示指定类别驱动。多个类别可重复指定。    |
+| `--provider <驱动供应商>`     | `-p`    | **包含**指定的驱动供应商，仅显示指定供应商驱动。多个供应商可重复指定。 |
+
+- 示例
+    - `DriverIndexer.exe list C:\`
+    - `DriverIndexer.exe list C:\ --class net`
+    - `DriverIndexer.exe list C:\ --exclude-class net`
+    - `DriverIndexer.exe list C:\ --provider "Qualcomm, Inc."`
 
 ### 导入驱动
 
@@ -126,9 +163,20 @@
 
 `DriverIndexer.exe import <系统盘路径> <驱动路径>`
 
+- 驱动路径格式：压缩包（限 7zip 所支持的格式）、目录格式。
+- 支持通配符(`*`、`?`)，用于匹配多个驱动包。
+
 - 选项
-    - `--password <密码>`：指定驱动包密码，用于解压驱动包。
-    - `--match-device`: 匹配当前系统设备，默认匹配所有设备。
+
+| **参数**            | **短参数** | **描述**             |
+|-------------------|---------|--------------------|
+| `--password <密码>` | `-p`    | 指定驱动包密码，用于解压驱动包。   |
+| `--match-device`  | `-m`    | 匹配当前系统设备，默认匹配所有设备。 |
+
+- 示例
+    - `DriverIndexer.exe import C:\ D:\netcard.7z`
+    - `DriverIndexer.exe import C:\ D:\netcard\*.7z`
+    - `DriverIndexer.exe import C:\ D:\netcard.7z --password 123456`
 
 ### 导出驱动
 
@@ -137,9 +185,20 @@
 `DriverIndexer.exe export <系统盘路径> <导出目录>`
 
 - 选项
-    - `--inf <驱动名称>`：指定驱动名称，仅导出指定驱动。
-    - `--class <驱动类别>`：指定驱动类别，仅导出指定类别驱动。
-    - `--provider <驱动供应商>`：指定驱动供应商，仅导出指定供应商驱动。
+
+| **参数**                   | **短参数** | **描述**                                |
+|--------------------------|---------|---------------------------------------|
+| `--inf <inf文件名>`         | `-i`    | 指定驱动inf文件名，仅导出指定驱动。                   |
+| `--class <驱动类别>`         | `-c`    | **包含**指定的驱动类别，仅导出指定类别驱动。多个类别可重复指定。    |
+| `--exclude-class <驱动类别>` | `-e`    | **排除**指定的驱动类别，不导出指定类别驱动。多个类别可重复指定。    |
+| `--provider <驱动供应商>`     | `-p`    | **包含**指定的驱动供应商，仅导出指定供应商驱动。多个供应商可重复指定。 |
+
+- 示例
+    - `DriverIndexer.exe export C:\ D:\drivers`
+    - `DriverIndexer.exe export C:\ D:\drivers --inf netcard.inf`
+    - `DriverIndexer.exe export C:\ D:\drivers --class net`
+    - `DriverIndexer.exe export C:\ D:\drivers --exclude-class net`
+    - `DriverIndexer.exe export C:\ D:\drivers --provider "Qualcomm, Inc."`
 
 ### 删除驱动
 
@@ -148,18 +207,31 @@
 `DriverIndexer.exe remove <系统盘路径>`
 
 - 选项
-    - `--inf <驱动名称>`：指定驱动名称，仅删除指定驱动。
-    - `--class <驱动类别>`：指定驱动类别，仅删除指定类别驱动。
-    - `--provider <驱动供应商>`：指定驱动供应商，仅删除指定供应商驱动。
-    - `--all`: 删除所有驱动。
+
+| **参数**               | **短参数** | **描述**                                |
+|----------------------|---------|---------------------------------------|
+| `--inf <inf文件名>`     | `-i`    | 指定驱动inf文件名，仅删除指定驱动。                   |
+| `--class <驱动类别>`     | `-c`    | **包含**指定的驱动类别，仅删除指定类别驱动。多个类别可重复指定。    |
+| `--provider <驱动供应商>` | `-p`    | **包含**指定的驱动供应商，仅删除指定供应商驱动。多个供应商可重复指定。 |
+| `--all`              | `-a`    | 删除所有驱动。                               |
+
+- 示例
+    - `DriverIndexer.exe remove C:\ --inf netcard.inf`
+    - `DriverIndexer.exe remove C:\ --class net`
+    - `DriverIndexer.exe remove C:\ --provider "Qualcomm, Inc."`
+    - `DriverIndexer.exe remove C:\ --all`
 
 ### 创建自解压驱动程序包
 
 将 `DriverIndexer` 与驱动包合并，生成一个单一的 EXE 文件。这个 EXE 将自动运行，并按需解压和安装内置驱动。
 
-> 温馨提示：驱动包不能设置密码，否则会导致驱动安装失败。
-
 `DriverIndexer.exe pack <驱动包/目录路径> <输出EXE路径>`
+
+- 选项
+
+| **参数**            | **短参数** | **描述**           |
+|-------------------|---------|------------------|
+| `--password <密码>` | `-p`    | 指定驱动包密码，用于加密驱动包。 |
 
 - 示例
     - `DriverIndexer.exe pack D:\netcard D:\netcard.exe`
@@ -167,16 +239,27 @@
 
 ### 驱动文件整理
 
-将一个目录内的 INF 文件按照厂商、类别等规则进行分类和重命名。
+将文件夹中的驱动按驱动类别、厂商等规则分类，并根据 INF 文件中的信息进行重命名。
 
 `DriverIndexer.exe organize <驱动路径> <导出目录>`
 
 - 示例
     - `DriverIndexer.exe organize D:\netcard D:\netcard-organized`
 
+### 密码加密
+
+为了保护驱动包密码，提供密码加密功能。加密后的密码可以在安装驱动包时指定 `--password <加密后的密码>`
+参数使用。密码加密使用`AES-128`算法，确保密码安全性。
+
+`DriverIndexer.exe encrypt <密码>`
+
+- 示例
+    - `DriverIndexer.exe encrypt 12345678`
+    - `DriverIndexer.exe install D:\netcard.7z --password enc:XXXXX`
+
 ### 全局选项
 
-`DriverIndexer.exe [全局选项] 命令 参数`
+`DriverIndexer.exe [全局选项] 命令 [参数] [选项]`
 
 | 参数              | 短参数 | 描述                                               | 默认值  |
 |-----------------|-----|--------------------------------------------------|------|
@@ -184,9 +267,9 @@
 | `--language`    | 无   | 设置程序语言 (`En`, `zh-cn`, `zh-tw`, `ja-jp`、`ko-kr`) | 自动识别 |
 | `--log<日志文件路径>` | 无   | 开启日志。将所有运行信息打印到指定文件中，方便排查问题。                     | 无    |
 
-## 驱动类别参考
+### 驱动类别参考
 
-以下是常见的驱动类别名称，可用于`--class`参数指定驱动类别。
+以下是常见的驱动类别名称，可用于`--class`参数、`--exclude-class`参数指定驱动类别。
 
 > 注意：
 >
@@ -215,17 +298,27 @@
 | Media       | 多媒体设备           |
 | System      | 系统设备            |
 
-## 驱动包获取网站
+## 编译
 
-> 我们更提倡自己下载、搜集驱动包，如有需求也可自行提取目前各个驱动软件内的驱动包（一般此类驱动包无版权）
+### 环境要求
 
-以下为推荐的驱动包下载网站（均免费、无加密）
+- Rust 1.65 或以上版本
+- VC-LTL
+- YY-Thunks
 
-- [SamDrivers](https://driveroff.net)
-- [DriverPack](https://drp.su/en/foradmin?_blank)
-- [3DP](https://www.3dpchip.com/3dpchip/3dp/net_down.php?_blank)
-- [DriverOff](https://driveroff.net/category/dp?_blank)
-- [BatPEDriver](http://forum.ru-board.com/topic.cgi?forum=62&topic=24098&start=71&limit=1&m=1#1?_blank)
+### 配置项目
+
+新建 `.env` 文件，配置以下内容：
+
+```env
+# 密钥，用于密码加密
+# 此处密钥为示例，建议自定义密钥
+SECRET_KEY = 0123456789ABCDEF0123456789ABCDEF
+```
+
+### 编译项目
+
+使用 `cargo build --release` 命令编译项目。编译完成后，在 `target/release` 目录下即可找到 `DriverIndexer.exe` 文件。
 
 ## 开源许可
 

@@ -47,8 +47,8 @@ impl Devcon {
     pub fn get_hardware_device_info(&self, drive_class: Option<&str>) -> Result<Vec<HardwareInfo>> {
         let output = Command::new(&self.devcon_program)
             .arg("hwids")
-            .arg(if drive_class.is_some() {
-                format!("={}", &drive_class.unwrap())
+            .arg(if let Some(drive_class) = drive_class {
+                format!("={}", &drive_class)
             } else {
                 "*".to_string()
             })

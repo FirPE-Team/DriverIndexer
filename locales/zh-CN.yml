@@ -90,6 +90,9 @@ driver-install-success: "驱动程序安装成功"
 install-offline-driver: "安装离线系统驱动 (%{path})"
 not-found-offline-system: "没有找到离线 Windows 系统"
 
+# 列举驱动
+no-driver-found: "驱动库中没有第三方驱动"
+
 # 导入驱动
 offline-Arch-Err: "获取离线系统架构失败"
 driver-import-info: "导入驱动"

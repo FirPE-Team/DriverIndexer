@@ -1,4 +1,5 @@
 extern crate embed_resource;
+extern crate thunk;
 
 fn main() {
     // 版本信息
@@ -8,6 +9,5 @@ fn main() {
 
     // 兼容 Windows 7、Windows XP
     #[cfg(not(debug_assertions))]
-    #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
     thunk::thunk();
 }

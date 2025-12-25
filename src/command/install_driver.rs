@@ -103,6 +103,22 @@ impl DriverInstaller {
                             .as_secs();
                         if driver_size != config.size || timestamp != config.timestamp {
                             // 驱动包与索引文件不匹配，即时建立索引文件
+                            if DEBUG.load(Ordering::Relaxed) {
+                                write_console(
+                                    ConsoleType::Debug,
+                                    &format!(
+                                        "driver size: {}, config size: {}",
+                                        driver_size, config.size
+                                    ),
+                                );
+                                write_console(
+                                    ConsoleType::Debug,
+                                    &format!(
+                                        "driver timestamp: {}, config timestamp: {}",
+                                        timestamp, config.timestamp
+                                    ),
+                                );
+                            }
                             write_console(ConsoleType::Warning, &t!("driver-not-match-config"));
                             write_console(ConsoleType::Info, &t!("create-index-info"));
                             self.build_config(driver_pack_path, password, &extract_path)?
@@ -529,11 +545,11 @@ impl DriverInstaller {
                 .is_ok()
             {
                 // 目前假设只有一个 index 文件，直接 glob 查找
-                if let Some(found) =
-                    glob::glob(&format!("{}/**/*.index", extract_path.to_string_lossy()))
-                        .expect("glob index file failed")
-                        .filter_map(Result::ok)
-                        .next()
+                let pattern = extract_path.join("**").join("*.index");
+                if let Some(found) = glob::glob(&pattern.to_string_lossy())
+                    .expect("glob index file failed")
+                    .filter_map(Result::ok)
+                    .next()
                 {
                     return Some(found);
                 }

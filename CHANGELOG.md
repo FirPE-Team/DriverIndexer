@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2025-12-25
+
+### Added
+
+- Driver package password parameter encryption
+- Password support for self-extracting driver packages (32 characters only)
+- Install driver description info
+- Install driver exclude class parameter
+
+### Fixed
+
+- Improve the path for recognizing colons
+- Improved handling of offline system driver DLL usage
+- Improved support for drive paths
+- Improved 7-zip error handling
+- Improved English translation format
+- Improved driver decompression when the driver package has no root directory
+- Improved driver matching performance
+- Improved driver installation and decompression error message
+- Improved index creation failure message
+- Improved setupapi encapsulation
+- Improve the matching function and output information
+- Improved driver package cannot recognize the driver index
+- Improved more error exit codes
+
 ## [2.0.0] - 2025-11-27
 
 ### Added

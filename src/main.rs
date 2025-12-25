@@ -13,7 +13,7 @@ rust_i18n::i18n!("locales");
 mod cli;
 mod command;
 mod driver_index;
-mod driver_manger;
+mod driver_manager;
 mod hardware;
 mod tests;
 mod utils;
@@ -22,7 +22,7 @@ use crate::cli::Cli;
 use crate::cli::Command;
 use crate::command::{check_if_bundled, DriverInstaller};
 use crate::driver_index::DriverIndex;
-use crate::driver_manger::DriverManger;
+use crate::driver_manager::DriverManger;
 use crate::utils::console::{write_console, ConsoleType};
 use crate::utils::setupapi::SetupAPI;
 use crate::utils::utils::{
@@ -212,9 +212,15 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 // 没有指定索引文件，使用默认索引文件名(驱动包名.index)
                 let config_name = format!(
                     "{}.index",
-                    driver_path.file_stem().unwrap().to_string_lossy()
+                    driver_path
+                        .file_stem()
+                        .unwrap_or("driver".as_ref())
+                        .to_string_lossy()
                 );
-                &driver_path.parent().unwrap().join(config_name)
+                &driver_path
+                    .parent()
+                    .unwrap_or(driver_path)
+                    .join(config_name)
             };
 
             // 解密密码
@@ -274,7 +280,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
 
         // 加载驱动程序
         Command::Install {
-            driver_path: drive_path,
+            driver_path,
             index_path,
             password,
             missing_only,
@@ -315,65 +321,63 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             let driver_loader = DriverInstaller::new();
 
             // 处理通配符
-            let drive_name = drive_path
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .to_string();
-            if drive_name.contains('*') || drive_name.contains('?') {
-                let driver_list =
-                    get_file_list(&PathBuf::from(&drive_path.parent().unwrap()), &drive_name)
-                        .unwrap();
-                if driver_list.is_empty() {
-                    write_console(
-                        ConsoleType::Error,
-                        "No driver package was found in this directory",
-                    );
-                    return Err(anyhow!("No driver package was found in this directory"));
-                }
+            if let Some(driver_name) = driver_path.file_name() {
+                let driver_name = driver_name.to_string_lossy().to_string();
+                if driver_name.contains('*') || driver_name.contains('?') {
+                    let driver_list =
+                        get_file_list(&PathBuf::from(&driver_path.parent().unwrap()), &driver_name)
+                            .with_context(|| "Get driver package list failed")?;
+                    if driver_list.is_empty() {
+                        write_console(
+                            ConsoleType::Error,
+                            "No driver package was found in this directory",
+                        );
+                        return Err(anyhow!("No driver package was found in this directory"));
+                    }
 
-                // 创建索引列表（无索引则使用None）
-                let mut index_list: Vec<Option<PathBuf>> = Vec::new();
-                if let Some(index_path) = &index_path {
-                    let inedx_path = PathBuf::from(index_path);
-                    let index_name = inedx_path.file_name().unwrap().to_str().unwrap();
-                    if index_name.contains('*') || index_name.contains('?') {
-                        for item in
-                            get_file_list(&PathBuf::from(&inedx_path.parent().unwrap()), index_name)
-                                .unwrap()
-                        {
-                            index_list.push(Some(item));
+                    // 创建索引列表（无索引则使用None）
+                    let mut index_list: Vec<Option<PathBuf>> = Vec::new();
+                    if let Some(index_path) = &index_path {
+                        let inedx_path = PathBuf::from(index_path);
+                        let index_name = inedx_path.file_name().unwrap().to_str().unwrap();
+                        if index_name.contains('*') || index_name.contains('?') {
+                            for item in get_file_list(
+                                &PathBuf::from(&inedx_path.parent().unwrap()),
+                                index_name,
+                            )
+                            .with_context(|| "Get driver package list failed")?
+                            {
+                                index_list.push(Some(item));
+                            }
+                        } else {
+                            index_list.push(Some(PathBuf::from(index_path)));
                         }
                     } else {
-                        index_list.push(Some(PathBuf::from(index_path)));
+                        index_list.append(
+                            &mut driver_list
+                                .iter()
+                                .map(|_item| None)
+                                .collect::<Vec<Option<PathBuf>>>(),
+                        );
                     }
-                } else {
-                    index_list.append(
-                        &mut driver_list
-                            .iter()
-                            .map(|_item| None)
-                            .collect::<Vec<Option<PathBuf>>>(),
-                    );
-                }
 
-                let mut index_iter = index_list.iter();
+                    let mut index_iter = index_list.iter();
 
-                // 遍历驱动包
-                for drive_path_item in driver_list.iter() {
-                    let index = index_iter.next().unwrap().clone();
-                    let class = class.clone();
+                    // 遍历驱动包
+                    for drive_path_item in driver_list.iter() {
+                        let index = index_iter.next().unwrap().clone();
+                        let class = class.clone();
 
-                    write_console(
-                        ConsoleType::Info,
-                        &format!(
-                            "{}: {}",
-                            &t!("driver-install-info"),
-                            drive_path_item.to_string_lossy()
-                        ),
-                    );
+                        write_console(
+                            ConsoleType::Info,
+                            &format!(
+                                "{}: {}",
+                                &t!("driver-install-info"),
+                                drive_path_item.to_string_lossy()
+                            ),
+                        );
 
-                    driver_loader
-                        .install_driver(
+                        match driver_loader.install_driver(
                             drive_path_item,
                             password.as_deref(),
                             index.as_deref(),
@@ -382,36 +386,41 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                             exclude_class.as_deref(),
                             extract_path.as_deref(),
                             *force,
-                        )
-                        .ok();
-                }
-                Ok(())
-            } else {
-                // 无通配符
-                write_console(
-                    ConsoleType::Info,
-                    &format!(
-                        "{}: {}",
-                        &t!("driver-install-info"),
-                        drive_path.to_string_lossy()
-                    ),
-                );
-
-                match driver_loader.install_driver(
-                    drive_path,
-                    password.as_deref(),
-                    index_path.as_deref(),
-                    *missing_only,
-                    class.as_deref(),
-                    exclude_class.as_deref(),
-                    extract_path.as_deref(),
-                    *force,
-                ) {
-                    Ok(_) => Ok(()),
-                    Err(e) => {
-                        write_console(ConsoleType::Error, &e.to_string());
-                        Err(e)
+                        ) {
+                            Ok(_) => {}
+                            Err(e) => {
+                                write_console(ConsoleType::Error, &e.to_string());
+                            }
+                        }
                     }
+                    return Ok(());
+                }
+            }
+
+            // 无通配符
+            write_console(
+                ConsoleType::Info,
+                &format!(
+                    "{}: {}",
+                    &t!("driver-install-info"),
+                    driver_path.to_string_lossy()
+                ),
+            );
+
+            match driver_loader.install_driver(
+                driver_path,
+                password.as_deref(),
+                index_path.as_deref(),
+                *missing_only,
+                class.as_deref(),
+                exclude_class.as_deref(),
+                extract_path.as_deref(),
+                *force,
+            ) {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    write_console(ConsoleType::Error, &e.to_string());
+                    Err(e)
                 }
             }
         }
@@ -486,81 +495,86 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 }
             }
 
-            // 处理通配符
-            let drive_name = drive_path.file_name().unwrap().to_str().unwrap();
             let driver_manger = DriverManger::new(system_drive)?;
 
-            if drive_name.contains('*') || drive_name.contains('?') {
-                let drive_list =
-                    get_file_list(&PathBuf::from(&drive_path.parent().unwrap()), drive_name)
-                        .unwrap();
-                if drive_list.is_empty() {
-                    write_console(
-                        ConsoleType::Error,
-                        "No driver package was found in this directory",
-                    );
-                    return Err(anyhow!("No driver package was found in this directory"));
-                }
-                for item in drive_list {
-                    write_console(
-                        ConsoleType::Info,
-                        &format!("{}: {}", &t!("driver-import-info"), item.to_string_lossy()),
-                    );
+            // 处理通配符
+            if let Some(driver_name) = drive_path.file_name() {
+                let driver_name = driver_name.to_string_lossy().to_string();
+                if driver_name.contains('*') || driver_name.contains('?') {
+                    let drive_list =
+                        get_file_list(&PathBuf::from(&drive_path.parent().unwrap()), &driver_name)
+                            .with_context(|| "Get driver package list failed")?;
+                    if drive_list.is_empty() {
+                        write_console(
+                            ConsoleType::Error,
+                            "No driver package was found in this directory",
+                        );
+                        return Err(anyhow!("No driver package was found in this directory"));
+                    }
 
-                    match driver_manger.import_driver(
-                        system_drive,
-                        &item,
-                        password.as_deref(),
-                        *match_all,
-                    ) {
-                        Ok((success_count, fail_count, total_count)) => {
-                            write_console(
-                                ConsoleType::Info,
-                                &t!(
-                                    "driver-import-summary",
-                                    success = success_count.to_string(),
-                                    fail = fail_count.to_string(),
-                                    total = total_count.to_string()
-                                ),
-                            );
-                        }
-                        Err(e) => {
-                            write_console(ConsoleType::Error, &e.to_string());
-                        }
-                    };
-                }
-            } else {
-                // 无通配符
-                write_console(
-                    ConsoleType::Info,
-                    &format!(
-                        "{}: {}",
-                        &t!("driver-import-info"),
-                        drive_path.to_string_lossy()
-                    ),
-                );
-
-                match driver_manger.import_driver(
-                    system_drive,
-                    drive_path,
-                    password.as_deref(),
-                    *match_all,
-                ) {
-                    Ok((success_count, fail_count, total_count)) => {
+                    // 遍历驱动包列表
+                    for item in drive_list {
                         write_console(
                             ConsoleType::Info,
-                            &t!(
-                                "driver-import-summary",
-                                success = success_count.to_string(),
-                                fail = fail_count.to_string(),
-                                total = total_count.to_string()
-                            ),
+                            &format!("{}: {}", &t!("driver-import-info"), item.to_string_lossy()),
                         );
+
+                        match driver_manger.import_driver(
+                            system_drive,
+                            &item,
+                            password.as_deref(),
+                            *match_all,
+                        ) {
+                            Ok((success_count, fail_count, total_count)) => {
+                                write_console(
+                                    ConsoleType::Info,
+                                    &t!(
+                                        "driver-import-summary",
+                                        success = success_count.to_string(),
+                                        fail = fail_count.to_string(),
+                                        total = total_count.to_string()
+                                    ),
+                                );
+                            }
+                            Err(e) => {
+                                write_console(ConsoleType::Error, &e.to_string());
+                            }
+                        };
                     }
-                    Err(e) => {
-                        write_console(ConsoleType::Error, &e.to_string());
-                        return Err(e);
-                    }
+                    return Ok(());
+                }
+            }
+
+            // 无通配符
+            write_console(
+                ConsoleType::Info,
+                &format!(
+                    "{}: {}",
+                    &t!("driver-import-info"),
+                    drive_path.to_string_lossy()
+                ),
+            );
+
+            match driver_manger.import_driver(
+                system_drive,
+                drive_path,
+                password.as_deref(),
+                *match_all,
+            ) {
+                Ok((success_count, fail_count, total_count)) => {
+                    write_console(
+                        ConsoleType::Info,
+                        &t!(
+                            "driver-import-summary",
+                            success = success_count.to_string(),
+                            fail = fail_count.to_string(),
+                            total = total_count.to_string()
+                        ),
+                    );
+                }
+                Err(e) => {
+                    write_console(ConsoleType::Error, &e.to_string());
+                    return Err(e);
                 }
             }
             Ok(())
@@ -668,7 +682,12 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             ) {
                 Ok(_) => Ok(()),
                 Err(e) => {
-                    write_console(ConsoleType::Error, &e.to_string());
+                    // write_console(ConsoleType::Error, &e.to_string());
+                    let mut level_message = e.to_string();
+                    if let Some(cause) = e.source() {
+                        level_message = format!("{} ({})", level_message, cause);
+                    }
+                    write_console(ConsoleType::Error, &level_message);
                     Err(e)
                 }
             }
