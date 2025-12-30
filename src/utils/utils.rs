@@ -1,6 +1,7 @@
 use crate::{Asset, SECRET_KEY};
 use anyhow::{anyhow, Context, Result};
 use chrono::Local;
+use crc32fast::Hasher;
 use glob::MatchOptions;
 use goblin::pe::PE;
 use magic_crypt::{new_magic_crypt, MagicCryptTrait};
@@ -8,7 +9,7 @@ use std::cmp::Ordering;
 use std::ffi::c_void;
 use std::ffi::OsString;
 use std::fs::{File, OpenOptions};
-use std::io::{BufWriter, Write};
+use std::io::{BufReader, BufWriter, Read, Write};
 use std::iter::repeat_with;
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
@@ -937,4 +938,31 @@ pub fn get_file_version(path: &Path) -> Option<(u16, u16, u16, u16)> {
 
         Some((major, minor, build, revision))
     }
+}
+
+/// 获取文件的 CRC32 校验值。
+///
+/// 此函数通过读取文件内容，计算其 CRC32 校验值。
+///
+/// # 参数
+/// - `path`: 文件的路径。
+///
+/// # 返回值
+/// - `Ok(crc32)`: 如果成功计算到 CRC32 值，返回该值。
+/// - `Err(error)`: 如果在读取或计算过程中发生错误。
+pub fn get_file_crc32(path: &Path) -> std::io::Result<u32> {
+    let file = fs::File::open(path)?;
+    // 64KB 缓冲区
+    let mut reader = BufReader::with_capacity(64 * 1024, file);
+    let mut hasher = Hasher::new();
+    let mut buffer = [0u8; 64 * 1024];
+
+    loop {
+        let count = reader.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+    Ok(hasher.finalize())
 }

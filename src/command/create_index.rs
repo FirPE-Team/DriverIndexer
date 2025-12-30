@@ -1,7 +1,7 @@
 use crate::driver_index::{DriverIndex, InfInfo};
 use crate::utils::console::{write_console, ConsoleType};
 use crate::utils::sevenzip::SevenZip;
-use crate::utils::utils::get_file_list;
+use crate::utils::utils::{get_file_crc32, get_file_list};
 use crate::TEMP_PATH;
 use anyhow::{anyhow, Context, Result};
 use rust_i18n::t;
@@ -167,8 +167,12 @@ pub fn create_index(
         })?
         .as_secs();
 
+    // 计算驱动包CRC32校验值
+    let crc32 = get_file_crc32(&drive_path).with_context(|| "get file crc32 failed")?;
+
     // 创建索引配置文件
-    let config = DriverIndex::new(size, timestamp, inf_info_list);
+    let config = DriverIndex::new(size, timestamp, crc32, inf_info_list);
+
     let json = config
         .to_json()
         .with_context(|| format!("serialize config data to json {}", index_path.display()))?;

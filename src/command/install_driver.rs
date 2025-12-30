@@ -78,47 +78,8 @@ impl DriverInstaller {
                         config
                     } else {
                         // 索引文件解析成功，校验索引文件是否与驱动包匹配
-                        let driver_size = driver_pack_path
-                            .metadata()
-                            .with_context(|| "get driver pack size failed")?
-                            .len();
-
-                        // 获取驱动包修改时间戳
-                        let timestamp = driver_pack_path
-                            .metadata()
-                            .with_context(|| {
-                                format!("get drive path metadata {}", driver_pack_path.display())
-                            })?
-                            .modified()
-                            .with_context(|| {
-                                format!("get drive path modified {}", driver_pack_path.display())
-                            })?
-                            .duration_since(UNIX_EPOCH)
-                            .with_context(|| {
-                                format!(
-                                    "get drive path duration since unix epoch {}",
-                                    driver_pack_path.display()
-                                )
-                            })?
-                            .as_secs();
-                        if driver_size != config.size || timestamp != config.timestamp {
+                        if config.check_config(&config, driver_pack_path).is_err() {
                             // 驱动包与索引文件不匹配，即时建立索引文件
-                            if DEBUG.load(Ordering::Relaxed) {
-                                write_console(
-                                    ConsoleType::Debug,
-                                    &format!(
-                                        "driver size: {}, config size: {}",
-                                        driver_size, config.size
-                                    ),
-                                );
-                                write_console(
-                                    ConsoleType::Debug,
-                                    &format!(
-                                        "driver timestamp: {}, config timestamp: {}",
-                                        timestamp, config.timestamp
-                                    ),
-                                );
-                            }
                             write_console(ConsoleType::Warning, &t!("driver-not-match-config"));
                             write_console(ConsoleType::Info, &t!("create-index-info"));
                             self.build_config(driver_pack_path, password, &extract_path)?
@@ -667,6 +628,7 @@ impl DriverInstaller {
                 .with_context(|| "Get driver pack path metadata failed")?
                 .len(),
             timestamp,
+            0,
             inf_info_list,
         ))
     }

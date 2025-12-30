@@ -1,8 +1,10 @@
+use crate::utils::console::{write_console, ConsoleType};
 use crate::utils::setupapi::SetupAPI;
 use crate::utils::utils::{
-    check_catalog_signature, compare_version, format_bytes, is_whql_signature,
+    check_catalog_signature, compare_version, format_bytes, get_file_crc32, is_whql_signature,
 };
-use anyhow::{Context, Result};
+use crate::DEBUG;
+use anyhow::{anyhow, Context, Result};
 use bincode::{config, Decode, Encode};
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
@@ -11,6 +13,7 @@ use std::collections::HashSet;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
+use std::time::UNIX_EPOCH;
 
 /// 驱动索引
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Encode, Decode)]
@@ -19,6 +22,8 @@ pub struct DriverIndex {
     pub size: u64,
     /// 索引文件修改时间戳（Unix 时间戳）
     pub timestamp: u64,
+    /// 索引文件CRC32校验值
+    pub crc32: u32,
     /// 索引数据（INF驱动信息列表）
     pub drivers: Vec<InfInfo>,
 }
@@ -108,10 +113,11 @@ impl DriverIndex {
     ///
     /// # 返回值
     /// - `DriverIndex`: 新的驱动索引
-    pub fn new(size: u64, timestamp: u64, drivers: Vec<InfInfo>) -> Self {
+    pub fn new(size: u64, timestamp: u64, crc32: u32, drivers: Vec<InfInfo>) -> Self {
         Self {
             size,
             timestamp,
+            crc32,
             drivers,
         }
     }
@@ -215,6 +221,88 @@ impl DriverIndex {
     pub fn to_binary(&self) -> Result<Vec<u8>> {
         let config = config::standard();
         Ok(bincode::encode_to_vec(self, config)?)
+    }
+
+    /// 校验配置文件是否与驱动包匹配
+    ///
+    /// # 参数
+    /// - `config` - 配置文件
+    /// - `driver_pack_path` - 驱动包路径
+    ///
+    /// # 返回值
+    /// - `Ok(())` - 配置文件与驱动包匹配
+    /// - `Err(...)` - 配置文件与驱动包不匹配
+    pub fn check_config(&self, config: &DriverIndex, driver_pack_path: &Path) -> Result<()> {
+        let metadata = driver_pack_path
+            .metadata()
+            .with_context(|| format!("Failed to get metadata for {:?}", driver_pack_path))?;
+
+        // 获取驱动包大小
+        let driver_size = metadata.len();
+        if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
+            write_console(
+                ConsoleType::Debug,
+                &format!("driver size: {}, config size: {}", driver_size, config.size),
+            );
+        }
+
+        // 校验驱动包大小是否匹配
+        if driver_size != config.size {
+            return Err(anyhow!("driver pack size not match"));
+        }
+
+        // 获取驱动包修改时间戳
+        let timestamp = metadata.modified()?.duration_since(UNIX_EPOCH)?.as_secs();
+        if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
+            write_console(
+                ConsoleType::Debug,
+                &format!(
+                    "driver timestamp: {}, config timestamp: {}",
+                    timestamp, config.timestamp
+                ),
+            );
+        }
+
+        // 如果大小一致，且本地与索引时间的差值（绝对值）在 2 秒以内，则认为匹配
+        if (timestamp as i64 - config.timestamp as i64).abs() <= 2 {
+            return Ok(());
+        }
+
+        // 时间戳不一致，计算CRC32校验值是否匹配
+        let driver_crc32 = get_file_crc32(driver_pack_path)?;
+        if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
+            write_console(
+                ConsoleType::Debug,
+                &format!(
+                    "driver crc32: {}, config crc32: {}",
+                    driver_crc32, config.crc32
+                ),
+            );
+        }
+        if driver_crc32 != config.crc32 {
+            return Err(anyhow!("driver crc32 not match"));
+        }
+
+        // 自动同步时间戳（同步驱动包修改时间戳）
+        match filetime::set_file_mtime(
+            driver_pack_path,
+            filetime::FileTime::from_unix_time(config.timestamp as i64, 0),
+        ) {
+            Ok(_) => {
+                if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
+                    write_console(ConsoleType::Debug, "Timestamp synced to config value.");
+                }
+            }
+            Err(e) => {
+                if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
+                    write_console(
+                        ConsoleType::Debug,
+                        &format!("Warning: Failed to sync timestamp: {}", e),
+                    );
+                }
+            }
+        }
+        Ok(())
     }
 }
 

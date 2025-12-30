@@ -58,3 +58,5 @@ windows = { version = "0.62.2", features = [
 magic-crypt = "4.0.1"
 dotenvy = "0.15.7"
 dotenvy_macro = "0.15.7"
+crc32fast = "1.5.0"
+filetime = "0.2.26"
