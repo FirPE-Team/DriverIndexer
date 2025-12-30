@@ -1,6 +1,7 @@
 use crate::utils::utils::write_embed_file;
 use crate::TEMP_PATH;
 use anyhow::{anyhow, Context, Result};
+use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -16,6 +17,20 @@ impl SevenZip {
     /// - `Ok(SevenZip)`: 初始化成功
     /// - `Err()`: 初始化失败，返回错误信息
     pub fn new() -> Result<SevenZip> {
+        // 检查自身所在目录是否存在 7z.exe
+        if let Ok(current_exe) = env::current_exe() {
+            if let Some(exe_dir) = current_exe.parent() {
+                let local_7z = exe_dir.join("7z.exe");
+                if local_7z.exists() && exe_dir.join("7z.dll").exists() {
+                    // 如果本地存在，直接返回本地路径
+                    return Ok(SevenZip {
+                        zip_program: local_7z,
+                    });
+                }
+            }
+        }
+
+        // 如果本地不存在，从资源中提取到临时目录
         let zip_program = TEMP_PATH.join("7z.exe");
         if !zip_program.exists() {
             write_embed_file("7z.exe", &zip_program)
