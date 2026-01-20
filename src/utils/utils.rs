@@ -520,15 +520,17 @@ pub fn find_offline_system() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
 
     // 获取当前系统盘符
-    let current_system_drive = env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string());
+    let current_system_drive = env::var("SystemDrive");
 
     for letter in b'C'..=b'Z' {
-        let drive = format!("{}:", letter as char);
+        let drive = format!("{}:\\", letter as char);
         // 跳过当前系统盘
-        if drive.eq_ignore_ascii_case(&current_system_drive) {
-            continue;
+        if let Ok(current_system_drive) = &current_system_drive {
+            if drive.eq_ignore_ascii_case(&format!("{}\\", current_system_drive)) {
+                continue;
+            }
         }
-        let path = Path::new(&drive);
+        let path = PathBuf::from(format!("{}\\", drive));
         if path.exists()
             && path
                 .join("Windows")
