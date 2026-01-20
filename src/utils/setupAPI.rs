@@ -4,11 +4,11 @@ use std::path::Path;
 use windows::core::{GUID, HSTRING, PCWSTR};
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
     CM_Locate_DevNodeW, CM_Reenumerate_DevNode, SetupCloseInfFile, SetupDiClassGuidsFromNameExW,
-    SetupDiGetClassDescriptionW, SetupFindFirstLineW, SetupFindNextLine, SetupGetFieldCount, SetupGetStringFieldW,
-    SetupOpenInfFileW, CM_LOCATE_DEVNODE_NORMAL, CONFIGRET, INFCONTEXT,
-    INF_STYLE_OLDNT, INF_STYLE_WIN4,
+    SetupDiGetClassDescriptionW, SetupFindFirstLineW, SetupFindNextLine, SetupGetFieldCount,
+    SetupGetStringFieldW, SetupOpenInfFileW, CM_LOCATE_DEVNODE_NORMAL, CONFIGRET,
+    INFCONTEXT, INF_STYLE_WIN4,
 };
-use windows::Win32::Foundation::INVALID_HANDLE_VALUE;
+use windows::Win32::Foundation::{GetLastError, INVALID_HANDLE_VALUE};
 use windows::Win32::System::Com::CLSIDFromString;
 
 /// 封装Windows SetupAPI函数
@@ -127,7 +127,6 @@ impl SetupAPI {
     /// - `Ok(GUID)`: 成功返回GUID
     /// - `Err(e)`: 失败则返回错误信息
     pub fn get_guid_from_str(guid_str: &str) -> Result<GUID> {
-        // 将guid字符串转换为宽字符串
         let guid_hstring = HSTRING::from(guid_str);
         let guid = unsafe { CLSIDFromString(PCWSTR(guid_hstring.as_ptr())) }
             .with_context(|| "CLSIDFromString failed")?;
@@ -142,20 +141,15 @@ impl SetupAPI {
     /// # 返回值
     /// - `*mut c_void`: 成功返回inf文件句柄，失败返回`null_mut()`
     pub fn open_inf_file(inf_path: &Path) -> Result<*mut c_void> {
-        // 将inf文件路径转换为宽字符串
         let inf_hstring = HSTRING::from(inf_path);
         unsafe {
-            let handle = SetupOpenInfFileW(
-                PCWSTR(inf_hstring.as_ptr()),
-                None,
-                INF_STYLE_OLDNT | INF_STYLE_WIN4,
-                None,
-            );
+            let handle =
+                SetupOpenInfFileW(PCWSTR(inf_hstring.as_ptr()), None, INF_STYLE_WIN4, None);
             if handle == INVALID_HANDLE_VALUE.0 {
-                Err(anyhow!("SetupOpenInfFileW failed"))
-            } else {
-                Ok(handle)
+                return Err(anyhow!("SetupOpenInfFileW failed: {:?}", GetLastError()));
             }
+
+            Ok(handle)
         }
     }
 
@@ -231,8 +225,7 @@ impl SetupAPI {
         let mut buf: [u16; 256] = [0; 256];
         let mut needed: u32 = 0;
         unsafe {
-            SetupGetStringFieldW(context, field_index, Some(&mut buf), Some(&mut needed))
-                .with_context(|| "SetupGetStringFieldW failed")?;
+            SetupGetStringFieldW(context, field_index, Some(&mut buf), Some(&mut needed))?;
         }
         let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
         Ok(String::from_utf16_lossy(&buf[..len]))
@@ -248,7 +241,7 @@ impl SetupAPI {
     pub fn find_next_line(context: &mut INFCONTEXT) -> Result<INFCONTEXT> {
         let mut result = INFCONTEXT::default();
         unsafe {
-            SetupFindNextLine(context, &mut result).with_context(|| "SetupFindNextLine failed")?;
+            SetupFindNextLine(context, &mut result)?;
         }
         Ok(result)
     }
