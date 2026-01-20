@@ -48,6 +48,8 @@ options:
   driver-name: "驅動程式名稱(inf)"
   driver-provider: "驅動程式供應商"
   debug: "開啟偵錯模式"
+  compress-index: "壓縮索引檔案"
+  skip-verify: "跳過驗證驅動程式"
   encrypt-password: "加密的平文密碼"
   log-path: "日誌檔案路徑"
   help: "列印說明資訊"

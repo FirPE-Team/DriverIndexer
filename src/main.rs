@@ -97,6 +97,7 @@ fn main() {
             &current_exe,
             footer.get_password(),
             None,
+            true,
             false,
             None,
             None,
@@ -193,6 +194,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             driver_path,
             index_path,
             password,
+            compress,
         } => {
             // 创建临时目录
             if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
@@ -205,7 +207,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                     &format!("Temp path: {}", TEMP_PATH.display(),),
                 );
             };
-
+            
             let config_path = if let Some(index_path) = index_path {
                 index_path
             } else {
@@ -241,7 +243,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             }
 
             write_console(ConsoleType::Info, &t!("create-index-info"));
-            match command::create_index(driver_path, password.as_deref(), config_path) {
+            match command::create_index(driver_path, password.as_deref(), config_path, *compress) {
                 Ok((total, success_count, error_count, blank_count)) => {
                     // 打印统计信息
                     write_console(
@@ -273,7 +275,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         // 索引信息
         Command::Info { index_path } => {
             let driver_index =
-                DriverIndex::from_json(index_path).with_context(|| "Parse driver index failed")?;
+                DriverIndex::from_path(index_path).with_context(|| "Parse driver index failed")?;
             println!("{}", driver_index.get_driver_index_info());
             Ok(())
         }
@@ -282,6 +284,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         Command::Install {
             driver_path,
             index_path,
+            skip_verify,
             password,
             missing_only,
             class,
@@ -381,6 +384,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                             drive_path_item,
                             password.as_deref(),
                             index.as_deref(),
+                            *skip_verify,
                             *missing_only,
                             class.as_deref(),
                             exclude_class.as_deref(),
@@ -411,6 +415,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 driver_path,
                 password.as_deref(),
                 index_path.as_deref(),
+                *skip_verify,
                 *missing_only,
                 class.as_deref(),
                 exclude_class.as_deref(),

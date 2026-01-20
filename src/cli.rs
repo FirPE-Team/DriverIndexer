@@ -54,6 +54,11 @@ pub enum Command {
         #[clap(short, long)]
         #[clap(help(t!("options.package-password").to_string()))]
         password: Option<String>,
+
+        /// 是否压缩索引文件
+        #[clap(short, long)]
+        #[clap(help(t!("options.compress-index").to_string()))]
+        compress: bool,
     },
 
     /// 索引信息子命令
@@ -76,6 +81,11 @@ pub enum Command {
         #[clap(short, long)]
         #[clap(help(t!("options.index-path").to_string()))]
         index_path: Option<PathBuf>,
+
+        /// 是否跳过索引验证
+        #[clap(short, long)]
+        #[clap(help(t!("options.skip-verify").to_string()))]
+        skip_verify: bool,
 
         /// 驱动密码
         #[clap(short, long)]

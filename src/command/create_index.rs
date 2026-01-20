@@ -29,6 +29,7 @@ pub fn create_index(
     drive_path: &Path,
     password: Option<&str>,
     save_path: &Path,
+    compress: bool,
 ) -> Result<(u32, u32, u32, u32)> {
     let zip = SevenZip::new().with_context(|| "create sevenZip failed")?;
 
@@ -168,17 +169,25 @@ pub fn create_index(
         .as_secs();
 
     // 计算驱动包CRC32校验值
-    let crc32 = get_file_crc32(&drive_path).with_context(|| "get file crc32 failed")?;
+    let crc32 = get_file_crc32(drive_path).with_context(|| "get file crc32 failed")?;
 
     // 创建索引配置文件
     let config = DriverIndex::new(size, timestamp, crc32, inf_info_list);
 
-    let json = config
-        .to_json()
-        .with_context(|| format!("serialize config data to json {}", index_path.display()))?;
+    let data = if compress {
+        // 压缩索引配置文件
+        config
+            .to_json_compress()
+            .with_context(|| "Compress config data failed")?
+    } else {
+        let json = config
+            .to_json()
+            .with_context(|| format!("Serialize config data to json {}", index_path.display()))?;
+        json.as_bytes().to_vec()
+    };
 
     // 保存索引配置文件
-    fs::write(&index_path, json).with_context(|| t!("index-save-failed"))?;
+    fs::write(&index_path, data).with_context(|| t!("index-save-failed"))?;
 
     Ok((
         inf_list.len() as u32,

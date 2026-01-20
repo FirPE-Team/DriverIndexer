@@ -48,6 +48,8 @@ options:
   driver-name: "驱动程序名称(inf)"
   driver-provider: "驱动程序供应商"
   encrypt-password: "要加密的明文密码"
+  compress-index: "压缩索引文件"
+  skip-verify: "跳过验证驱动程序"
   debug: "开启调试模式"
   log-path: "日志文件路径"
   help: "打印帮助信息"

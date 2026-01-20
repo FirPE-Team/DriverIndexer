@@ -122,6 +122,7 @@ pub fn pack_driver_program(
                 "{}.index",
                 driver_path.file_stem().unwrap().to_string_lossy()
             )),
+            false,
         )?;
 
         // 打包驱动

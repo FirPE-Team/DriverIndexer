@@ -7,11 +7,12 @@ use crate::DEBUG;
 use anyhow::{anyhow, Context, Result};
 use bincode::{config, Decode, Encode};
 use chrono::NaiveDate;
+use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 
@@ -187,23 +188,6 @@ impl DriverIndex {
         result
     }
 
-    /// 解析索引数据
-    ///
-    /// # 参数
-    /// - `index_path`: 索引文件路径
-    ///
-    /// # 返回值
-    /// - `Ok(Vec<InfInfo>)`: 解析后的INF驱动信息列表
-    pub fn from_json(path: &Path) -> Result<DriverIndex> {
-        let mut config_file =
-            File::open(path).with_context(|| format!("open file {:?} failed", path))?;
-        let mut content = String::new();
-        config_file
-            .read_to_string(&mut content)
-            .with_context(|| format!("read index file {:?}", path))?;
-        serde_json::from_str(&content).with_context(|| format!("parse index file {:?}", path))
-    }
-
     /// 将索引数据转换为JSON字符串
     ///
     /// # 返回值
@@ -211,6 +195,38 @@ impl DriverIndex {
     /// - `Err(Error)`: 失败（包含错误信息）
     pub fn to_json(&self) -> serde_json::Result<String> {
         serde_json::to_string(&self)
+    }
+
+    /// 解析索引数据
+    ///
+    /// # 参数
+    /// - `index_path`: 索引文件路径
+    ///
+    /// # 返回值
+    /// - `Ok(Vec<InfInfo>)`: 解析后的INF驱动信息列表
+    pub fn from_path(path: &Path) -> Result<DriverIndex> {
+        let mut config_file =
+            File::open(path).with_context(|| format!("open file {:?} failed", path))?;
+
+        // 校验文件是否为ZSTD压缩文件
+        let mut magic = [0u8; 4];
+        if config_file.read_exact(&mut magic).is_err() {
+            return Err(anyhow!("read magic failed"));
+        }
+        config_file.seek(SeekFrom::Start(0))?;
+
+        if magic == [0x28, 0xB5, 0x2F, 0xFD] {
+            let decompressed =
+                zstd::decode_all(&config_file).with_context(|| "Decompress config failed")?;
+            serde_json::from_slice(&decompressed)
+                .with_context(|| format!("parse index file {:?}", path))
+        } else {
+            let mut content = String::new();
+            config_file
+                .read_to_string(&mut content)
+                .with_context(|| format!("read index file {:?}", path))?;
+            serde_json::from_str(&content).with_context(|| format!("parse index file {:?}", path))
+        }
     }
 
     /// 将索引数据转换为Bincode编码的字节向量
@@ -221,6 +237,15 @@ impl DriverIndex {
     pub fn to_binary(&self) -> Result<Vec<u8>> {
         let config = config::standard();
         Ok(bincode::encode_to_vec(self, config)?)
+    }
+
+    /// 将索引数据转换为Zstd压缩后的JSON字符串
+    ///
+    /// # 返回值
+    /// - `Ok(())`: 成功
+    /// - `Err(Error)`: 失败（包含错误信息）
+    pub fn to_json_compress(&self) -> Result<Vec<u8>> {
+        zstd::encode_all(self.to_json()?.as_bytes(), 3).with_context(|| t!("index-compress-failed"))
     }
 
     /// 校验配置文件是否与驱动包匹配

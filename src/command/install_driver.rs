@@ -49,6 +49,7 @@ impl DriverInstaller {
         driver_pack_path: &Path,
         password: Option<&str>,
         config: Option<&Path>,
+        skip_verify: bool,
         missing_only: bool,
         class: Option<&[String]>,
         exclude_class: Option<&[String]>,
@@ -66,25 +67,25 @@ impl DriverInstaller {
         let config_path = if let Some(config) = config {
             Some(config.to_path_buf())
         } else {
-            self.find_config(driver_pack_path, password, &extract_path)
+            self.find_config(driver_pack_path)
         };
 
         // 解析索引文件
         let config = match config_path {
             Some(config_path) => {
-                if let Ok(config) = DriverIndex::from_json(&config_path) {
+                if let Ok(config) = DriverIndex::from_path(&config_path) {
                     // 校验是否为自解压驱动包
                     if check_if_bundled().is_some() {
                         config
                     } else {
-                        // 索引文件解析成功，校验索引文件是否与驱动包匹配
-                        if config.check_config(&config, driver_pack_path).is_err() {
+                        // 索引文件解析成功，如果不跳过校验且校验失败，则重新构建索引文件校
+                        if !skip_verify && config.check_config(&config, driver_pack_path).is_err() {
                             // 驱动包与索引文件不匹配，即时建立索引文件
                             write_console(ConsoleType::Warning, &t!("driver-not-match-config"));
                             write_console(ConsoleType::Info, &t!("create-index-info"));
                             self.build_config(driver_pack_path, password, &extract_path)?
                         } else {
-                            // 校验通过，加载索引文件
+                            // 校验通过或跳过校验，加载索引文件
                             write_console(
                                 ConsoleType::Info,
                                 &format!("{}: {}", t!("load-index"), config_path.display()),
@@ -431,6 +432,7 @@ impl DriverInstaller {
                 &driver_path,
                 None,
                 None,
+                true,
                 missing_only,
                 class,
                 exclude_class,
@@ -460,6 +462,7 @@ impl DriverInstaller {
                 &system_drive,
                 None,
                 None,
+                true,
                 missing_only,
                 class,
                 exclude_class,
@@ -480,12 +483,7 @@ impl DriverInstaller {
     /// # 返回值
     /// - `Some(PathBuf)`: 找到的索引文件路径
     /// - `None`: 未找到索引文件
-    fn find_config(
-        &self,
-        driver_path: &Path,
-        password: Option<&str>,
-        extract_path: &Path,
-    ) -> Option<PathBuf> {
+    fn find_config(&self, driver_path: &Path) -> Option<PathBuf> {
         // 检测同目录下的索引文件
         if let Some(parent) = driver_path.parent() {
             let same_config = parent.join(format!(
@@ -494,26 +492,6 @@ impl DriverInstaller {
             ));
             if same_config.exists() {
                 return Some(same_config);
-            }
-        }
-
-        // 检测压缩包内索引文件
-        if driver_path.is_file() {
-            // 解压索引文件到临时目录
-            if self
-                .zip
-                .extract_files_from_path(driver_path, password, "*.index", extract_path)
-                .is_ok()
-            {
-                // 目前假设只有一个 index 文件，直接 glob 查找
-                let pattern = extract_path.join("**").join("*.index");
-                if let Some(found) = glob::glob(&pattern.to_string_lossy())
-                    .expect("glob index file failed")
-                    .filter_map(Result::ok)
-                    .next()
-                {
-                    return Some(found);
-                }
             }
         }
 

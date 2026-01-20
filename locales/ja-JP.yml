@@ -48,6 +48,8 @@ options:
   driver-name: "ドライバー名(inf)"
   driver-provider: "ドライバープロバイダー"
   debug: "デバッグモードを有効にします"
+  compress-index: "インデックスファイルを圧縮します"
+  skip-verify: "ドライバーの検証をスキップします"
   encrypt-password: "暗号化する平文パスワード"
   log-path: "ログファイルパス"
   help: "ヘルプ情報を表示します"

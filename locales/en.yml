@@ -48,6 +48,8 @@ options:
   driver-provider: "Driver provider"
   debug: "Enable debug mode"
   encrypt-password: "Encrypt password string to secure ciphertext"
+  compress-index: "Compress index file"
+  skip-verify: "Skip verify driver"
   log-path: "Log file path"
   help: "Print help information"
   version: "Print version information"
