@@ -336,25 +336,21 @@ pub fn filetime_to_string(filetime: &FILETIME) -> Result<String, windows::core::
 /// - `Ok(Ordering)`
 /// - `Err(...)`：失败则返回错误
 pub fn compare_version(version1: &str, version2: &str) -> Ordering {
-    let ver1: Vec<u64> = version1
-        .split('.')
-        .filter_map(|s| s.parse::<u64>().ok())
-        .collect();
-    let ver2: Vec<u64> = version2
-        .split('.')
-        .filter_map(|s| s.parse::<u64>().ok())
-        .collect();
+    let mut it1 = version1.split('.').filter_map(|s| s.parse::<u64>().ok());
+    let mut it2 = version2.split('.').filter_map(|s| s.parse::<u64>().ok());
 
-    // 逐位比较
-    for (n1, n2) in ver1.iter().zip(ver2.iter()) {
-        match n1.cmp(n2) {
-            Ordering::Equal => continue,
-            ord => return ord,
+    loop {
+        match (it1.next(), it2.next()) {
+            (Some(v1), Some(v2)) => match v1.cmp(&v2) {
+                Ordering::Equal => continue,
+                ord => return ord,
+            },
+            // 前缀相同，看谁更长 (e.g. "10.0.1" > "10.0")
+            (Some(_), None) => return Ordering::Greater,
+            (None, Some(_)) => return Ordering::Less,
+            (None, None) => return Ordering::Equal,
         }
     }
-
-    // 如果前缀都一样，长的版本号更大 (e.g. 10.0.1 > 10.0)
-    ver1.len().cmp(&ver2.len())
 }
 
 /// 生成临时文件名
