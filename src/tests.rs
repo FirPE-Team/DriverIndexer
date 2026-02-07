@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod Tests {
-    use crate::driver_index::{DriverArch, DriverIndex, HardwareEntry, InfInfo, SignatureStatus};
+    use crate::driver_index::{DriverArch, DriverIndex, HardwareEntry, InfInfo};
     use crate::hardware::enumerate_hardware;
     use crate::utils::utils::{check_catalog_signature, compare_version};
     use std::cmp::Ordering;
@@ -37,14 +37,15 @@ mod Tests {
                 min_os_version: String::new(),
                 hardware_id: String::from(r"PCI\VEN_8086&DEV_1234"),
                 compatible_ids: vec![String::from(r"PCI\VEN_8086&DEV_1234&SUBSYS_12345678")],
+                feature_score: 0,
             }],
-            signature: SignatureStatus::None,
+            signature: 0,
         };
 
         let inf_info2 = InfInfo {
             path: String::from(r"driver2\audio.inf"),
             class: String::from("MEDIA"),
-            signature: SignatureStatus::None,
+            signature: 0,
             date: String::from("2023-02-01"),
             version: String::from("2.0.0.0"),
             hardware: vec![HardwareEntry {
@@ -53,12 +54,17 @@ mod Tests {
                 min_os_version: String::new(),
                 hardware_id: String::from(r"PCI\VEN_1234&DEV_5678"),
                 compatible_ids: vec![String::from(r"PCI\VEN_1234&DEV_5678&SUBSYS_87654321")],
+                feature_score: 0,
             }],
         };
 
         // 创建DriverIndex
-        let driver_index =
-            DriverIndex::new(1024, 1694400000, vec![inf_info1.clone(), inf_info2.clone()]);
+        let driver_index = DriverIndex::new(
+            1024,
+            1694400000,
+            None,
+            vec![inf_info1.clone(), inf_info2.clone()],
+        );
 
         // 测试get_driver_index_info方法
         let info_str = driver_index.get_driver_index_info();
