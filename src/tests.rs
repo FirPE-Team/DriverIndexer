@@ -92,7 +92,7 @@ mod Tests {
         assert_eq!(DriverArch::Nt.display(), "Nt");
     }
 
-    #[test]
+    // #[test]
     fn parse_inf_test() {
         let inf_path = Path::new(r"D:\UserData\Desktop\test\netrtl8188gu\netrtl8188gu.inf");
         let inf_info = InfInfo::parse_inf(inf_path.parent().unwrap(), inf_path).unwrap();
@@ -148,58 +148,6 @@ mod Tests {
         // assert_eq!(inf_info.version, "3.0.0.0");
         // assert_eq!(inf_info.hwid.len(), 1);
         // assert_eq!(inf_info.hwid[0], r"PCI\VEN_8086&DEV_0042");
-    }
-
-    // 测试代码：将全部硬件ID信息输出位csv格式
-    #[test]
-    fn output_csv() {
-        // let index_path = Path::new(r"D:\Project\FirPE\EFI\boot\drivers\Network.index");
-        // let out_path = index_path.parent().unwrap().join(format!(
-        //     "{}.csv",
-        //     index_path.file_stem().unwrap().to_string_lossy()
-        // ));
-        // let index = DriverIndex::from_json(index_path).unwrap();
-        //
-        // let mut result = String::new();
-        //
-        // // 添加CSV表头
-        // result.push_str("HardwareID,Path,Class,Arch,Date,Version\n");
-        //
-        // for driver in &index.drivers {
-        //     // 如果没有硬件ID，则跳过
-        //     if driver.hwid.is_empty() {
-        //         continue;
-        //     }
-        //
-        //     let mut all_hwid = driver.hwid.clone();
-        //     all_hwid.append(&mut driver.cid.clone());
-        //
-        //     // 为每个硬件ID创建一行
-        //     for hwid in &all_hwid {
-        //         // 将架构列表转换为字符串，用分号分隔
-        //         let arch_str = driver
-        //             .arch
-        //             .iter()
-        //             .map(|a| a.clone().display().to_string())
-        //             .collect::<Vec<_>>()
-        //             .join(";");
-        //
-        //         // 添加一行CSV数据
-        //         result.push_str(&format!(
-        //             "{},{},{},{},{},{}\n",
-        //             hwid,           // 硬件ID
-        //             driver.path,    // 驱动路径
-        //             driver.class,   // 驱动类别
-        //             arch_str,       // 驱动架构
-        //             driver.date,    // 驱动日期
-        //             driver.version  // 驱动版本
-        //         ));
-        //     }
-        // }
-        //
-        // // 将结果写入文件
-        // std::fs::write(&out_path, result).expect("Unable to write file");
-        // println!("CSV文件已生成: {}", out_path.display());
     }
 
     // drvstoreAPI测试

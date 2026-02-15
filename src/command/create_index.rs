@@ -169,7 +169,11 @@ pub fn create_index(
         .as_secs();
 
     // 计算驱动包CRC32校验值
-    let crc32 = get_file_crc32(drive_path).with_context(|| "get file crc32 failed")?;
+    let crc32 = if drive_path.is_file() {
+        Some(get_file_crc32(drive_path).with_context(|| "get file crc32 failed")?)
+    } else {
+        None
+    };
 
     // 创建索引配置文件
     let config = DriverIndex::new(size, timestamp, crc32, inf_info_list);

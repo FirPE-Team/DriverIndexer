@@ -151,58 +151,6 @@ pub fn enumerate_hardware(
         }
     }
 
-    // let device_info_set = unsafe {
-    //     SetupDiGetClassDevsW(None, PCWSTR::null(), None, DIGCF_ALLCLASSES | DIGCF_PRESENT)
-    //         .with_context(|| "Failed to get device info set")?
-    // };
-    //
-    // let mut dev_info_data = SP_DEVINFO_DATA {
-    //     cbSize: std::mem::size_of::<SP_DEVINFO_DATA>() as u32,
-    //     ..Default::default()
-    // };
-    //
-    // let mut index = 0;
-    //
-    // // 遍历设备
-    // loop {
-    //     if unsafe { SetupDiEnumDeviceInfo(device_info_set, index, &mut dev_info_data) }.is_err() {
-    //         // 遍历结束 (ERROR_NO_MORE_ITEMS)
-    //         break;
-    //     }
-    //
-    //     // 获取设备实例路径 (Instance ID)
-    //     let instance_path =
-    //         get_device_instance_id(device_info_set, &mut dev_info_data).unwrap_or_default();
-    //
-    //     // 获取名称 (优先取 FriendlyName，如果没有则取 DeviceDesc)
-    //     let name = get_device_name(device_info_set, &mut dev_info_data);
-    //
-    //     // 获取硬件 ID (REG_MULTI_SZ)
-    //     let hardware_ids =
-    //         get_device_property_string_list(device_info_set, &mut dev_info_data, SPDRP_HARDWAREID);
-    //
-    //     // 获取兼容 ID (REG_MULTI_SZ)
-    //     let compatible_ids = get_device_property_string_list(
-    //         device_info_set,
-    //         &mut dev_info_data,
-    //         SPDRP_COMPATIBLEIDS,
-    //     );
-    //
-    //     result_list.push(HardwareInfo {
-    //         device_instance_path: instance_path,
-    //         name,
-    //         hardware_id: hardware_ids,
-    //         compatible_id: compatible_ids,
-    //     });
-    //
-    //     index += 1;
-    // }
-    //
-    // // 释放资源
-    // unsafe {
-    //     let _ = SetupDiDestroyDeviceInfoList(device_info_set);
-    // }
-
     Ok(result_list)
 }
 

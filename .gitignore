@@ -11,7 +11,7 @@
 target
 *.iml
 Cargo.lock
-
+.env
 # Added by cargo
 
 /target

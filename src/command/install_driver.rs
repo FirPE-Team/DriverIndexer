@@ -8,6 +8,7 @@ use crate::utils::utils::{compare_version, find_offline_system, get_file_list, g
 use crate::{DEBUG, TEMP_PATH};
 use anyhow::{anyhow, Context, Result};
 use rust_i18n::t;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc::channel;
@@ -79,7 +80,7 @@ impl DriverInstaller {
                         config
                     } else {
                         // 索引文件解析成功，如果不跳过校验且校验失败，则重新构建索引文件校
-                        if !skip_verify && config.check_config(&config, driver_pack_path).is_err() {
+                        if !skip_verify && config.check_config(driver_pack_path).is_err() {
                             // 驱动包与索引文件不匹配，即时建立索引文件
                             write_console(ConsoleType::Warning, &t!("driver-not-match-config"));
                             write_console(ConsoleType::Info, &t!("create-index-info"));
@@ -140,7 +141,6 @@ impl DriverInstaller {
 
             // 过滤前一次安装的硬件信息
             let hwid_list: Vec<HardwareInfo> = hwid_list
-                .clone()
                 .into_iter()
                 .filter(|item| !total_list.contains(item))
                 .collect();
@@ -157,8 +157,20 @@ impl DriverInstaller {
             if DEBUG.load(Ordering::Relaxed) {
                 write_console(ConsoleType::Debug, "Match hardware info");
             }
-            let match_hardware_and_driver =
+            let mut match_hardware_and_driver =
                 match_driver_info(&hwid_list, &config.drivers, class, exclude_class);
+
+            // 由于存在多个设备匹配到同一个硬件ID的情况（但设备实例不同），而 UpdateDriverForPlugAndPlayDevices 需要提供硬件id而不是设备实例
+            // 故需要去重（保留第一个出现的 HWID，删除后续相同的 HWID项目）
+            let mut seen_hwids = HashSet::new();
+            match_hardware_and_driver.retain(|(device, _)| {
+                if let Some(primary_hwid) = device.hardware_id.first() {
+                    seen_hwids.insert(primary_hwid.clone())
+                } else {
+                    false
+                }
+            });
+
             if match_hardware_and_driver.is_empty() {
                 if scan_count == 0 {
                     return Err(anyhow!(t!("no-found-driver-currently")));
@@ -183,14 +195,15 @@ impl DriverInstaller {
                     write_console(
                         ConsoleType::Debug,
                         &format!(
-                            "Match info:\n            Name: {}\n            HWID: {}\n            Driver:\n            {}",
+                            "Match info:\n            Name: {}\n            Instance:{}\n            HWID: {}\n            Driver:\n            {}",
                             hardware.name,
+                            hardware.device_instance_path,
                             hardware.hardware_id.join(","),
                             driver_info
                                 .iter()
                                 .map(|(inf_info, _entry)| inf_info.path.as_str())
                                 .collect::<Vec<&str>>()
-                                .join("\n            ")
+                                .join("\n            "),
                         ),
                     );
                 }
@@ -557,15 +570,28 @@ impl DriverInstaller {
 
             pool.execute(move || {
                 // 解析INF文件，解析失败的INF将自动跳过
-                if let Ok(inf_info) = InfInfo::parse_inf(&base_path, &inf_file) {
-                    // 增加成功计数
-                    success_count.fetch_add(1, Ordering::Relaxed);
-
-                    // 发送到主线程
-                    tx.send(inf_info).expect("Send inf_info failed");
-                } else {
-                    // 增加错误计数
-                    error_count.fetch_add(1, Ordering::Relaxed);
+                match InfInfo::parse_inf(&base_path, &inf_file) {
+                    Ok(inf_info) => {
+                        // 增加成功计数
+                        success_count.fetch_add(1, Ordering::Relaxed);
+                        // 发送到主线程
+                        tx.send(inf_info).expect("Send inf_info failed");
+                    }
+                    Err(e) => {
+                        write_console(
+                            ConsoleType::Warning,
+                            &format!(
+                                "{}: {} ({})",
+                                t!("inf-parse-error"),
+                                inf_file
+                                    .to_string_lossy()
+                                    .trim_start_matches(&*TEMP_PATH.to_string_lossy()),
+                                e
+                            ),
+                        );
+                        // 增加错误计数
+                        error_count.fetch_add(1, Ordering::Relaxed);
+                    }
                 }
             });
         }
@@ -606,7 +632,7 @@ impl DriverInstaller {
                 .with_context(|| "Get driver pack path metadata failed")?
                 .len(),
             timestamp,
-            0,
+            None,
             inf_info_list,
         ))
     }
@@ -614,27 +640,28 @@ impl DriverInstaller {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum MatchType {
-    // 顺序很重要，Rust 的 derive(Ord) 会按照定义顺序比较，下面的比上面的大
-    // 我们希望分数越高越好
-    None = 0,
-    /// 最弱：设备兼容ID - INF 兼容ID
-    CompatibleToCompatible = 1,
-    /// 弱：设备兼容ID - INF 硬件ID
-    CompatibleToHardware = 2,
-    /// 强：设备硬件ID - INF 兼容ID
-    HardwareToCompatible = 3,
     /// 最强：设备硬件ID - INF 硬件ID
-    HardwareToHardware = 4,
+    HardwareToHardware = 0x0,
+    /// 强：设备兼容ID - INF 硬件ID
+    CompatibleToHardware = 0x1,
+    /// 弱：设备硬件ID - INF 兼容ID
+    HardwareToCompatible = 0x2,
+    /// 最弱：设备兼容ID - INF 兼容ID
+    CompatibleToCompatible = 0x3,
 }
 
-// 用于排序的临时结构
-struct MatchResult<'a> {
-    /// 硬件条目引用
+/// 候选驱动结构体：包含排序所需的所有因子
+#[derive(Debug)]
+struct DriverCandidate<'a> {
+    /// INF 驱动信息
+    inf: &'a InfInfo,
+    /// 硬件条目
     entry: &'a HardwareEntry,
-    ///INF 信息引用
-    inf_info: &'a InfInfo,
-    /// 匹配类型
-    score: MatchType,
+    /// 排名 (0xSSGGTHHH)
+    rank: u32,
+    /// 类优先级：1 = Base (Media/Net等), 0 = Extension/SoftwareComponent
+    /// 用于确保主驱动排在扩展驱动前面
+    class_priority: u8,
 }
 
 /// 获取匹配驱动的信息
@@ -645,6 +672,7 @@ struct MatchResult<'a> {
 /// - `driveClass` - 驱动类别
 ///
 /// # 匹配规则
+///
 /// 1. 匹配当前系统架构
 /// 2. 匹配当前操作系统版本
 /// 3. 匹配当前设备的硬件ID
@@ -692,7 +720,7 @@ pub fn match_driver_info<'a>(
 
     // 2. 遍历每一个设备
     for device in hardware_info_list {
-        let mut matched_infs: Vec<MatchResult> = Vec::new();
+        let mut candidates: Vec<DriverCandidate> = Vec::new();
 
         // 3. 遍历每一个 INF
         for inf_info in inf_info_list {
@@ -713,10 +741,9 @@ pub fn match_driver_info<'a>(
                 }
             }
 
-            // [Best Match] 寻找该 INF 中针对此设备最高的匹配分数
-            // 一个 INF 可能有多个 Entry 匹配同一个设备，我们取最好的那个作为该 INF 的代表
-            let mut best_inf_score = MatchType::None;
-            let mut best_entry: Option<&HardwareEntry> = None;
+            // 寻找该 INF 内部针对此设备的最佳条目
+            // 一个 INF 可能有多个 Entry 匹配同一个硬件ID，找出 Rank 数值最小（最好）的作为该 INF 的代表。
+            let mut best_candidate_in_inf: Option<DriverCandidate> = None;
 
             for entry in &inf_info.hardware {
                 // [Filter] 架构筛选 (Arch)
@@ -730,54 +757,71 @@ pub fn match_driver_info<'a>(
                     continue;
                 }
 
-                // [Match Logic] 核心匹配矩阵：4种情况
-                let current_score = calculate_id_match(device, entry);
+                // 计算匹配分量 (T 和 HHH)
+                let (match_type, hhh) = match calculate_id_score(device, entry) {
+                    Some(score) => score,
+                    None => continue, // 没匹配上，跳过
+                };
 
-                // 更新该 INF 的最高分
-                if current_score > best_inf_score {
-                    best_inf_score = current_score;
-                    best_entry = Some(entry);
+                // 组装 Rank (0xSSGGTHHH)
+                // SS: 签名得分 (0x00 - 0xFF)
+                let ss = inf_info.signature as u32;
+                // GG: 功能得分 (0x00 - 0xFF)
+                let gg = entry.feature_score as u32;
+                // T: 匹配类型 (0x0 - 0x3)
+                let t = match_type as u32;
+                // HHH: ID列表索引 (0x000 - 0xFFF)
+                let hhh_val = (hhh as u32).min(0xFFF);
+
+                let current_rank = (ss << 24) | (gg << 16) | (t << 12) | hhh_val;
+
+                // 更新本 INF 的最佳记录（注意：Rank 越小越好！）
+                match best_candidate_in_inf {
+                    None => {
+                        best_candidate_in_inf = Some(DriverCandidate {
+                            inf: inf_info,
+                            entry,
+                            class_priority: if is_extension_driver(inf_info) { 0 } else { 1 },
+                            rank: current_rank,
+                        });
+                    }
+                    Some(ref best) => {
+                        if current_rank < best.rank {
+                            best_candidate_in_inf = Some(DriverCandidate {
+                                inf: inf_info,
+                                entry,
+                                class_priority: if is_extension_driver(inf_info) { 0 } else { 1 },
+                                rank: current_rank,
+                            });
+                        }
+                    }
                 }
             }
 
-            // 如果该 INF 有效匹配（分数 > None），加入候选列表
-            if best_inf_score > MatchType::None {
-                if let Some(entry) = best_entry {
-                    matched_infs.push(MatchResult {
-                        entry,
-                        inf_info,
-                        score: best_inf_score,
-                    });
-                }
+            // 如果该 INF 中找到了匹配项，将其加入总候选池
+            if let Some(candidate) = best_candidate_in_inf {
+                candidates.push(candidate);
             }
         }
 
-        // 4. 对匹配到的 INF 进行排序 (Ranking)
-        // 规则：签名状态 -> 匹配类型(高到低) -> 驱动日期(新到旧) -> 驱动版本(大到小)
-        matched_infs.sort_by(|a, b| {
-            // 1. [最高优先级] 签名状态 (WHQL > Signed > None)
-            b.inf_info
-                .signature
-                .cmp(&a.inf_info.signature)
-                .then_with(|| {
-                    // 2. 匹配分数 (HWID > CID)
-                    b.score.cmp(&a.score)
-                })
-                .then_with(|| {
-                    // 3. 日期
-                    b.inf_info.date.cmp(&a.inf_info.date)
-                })
-                .then_with(|| {
-                    // 4. 版本
-                    compare_version(&b.inf_info.version, &a.inf_info.version)
-                })
+        // [Sort] 驱动排序逻辑 (Tie-Breaker)
+        candidates.sort_by(|a, b| {
+            // 1. [Class Priority] 确保 Base 驱动在 Extension 之前（防止扩展驱动被误装为主驱动）
+            // b.cmp(a) 是降序 (Base(1) > Extension(0))
+            b.class_priority
+                .cmp(&a.class_priority)
+                // 2. [Rank] 越小越好 (Ascending)
+                // 0x00000000 (WHQL+完美匹配) 优于 0xFF...
+                .then_with(|| a.rank.cmp(&b.rank))
+                // 3. [Date] 越新越好 (Descending)
+                .then_with(|| b.inf.date.cmp(&a.inf.date))
+                // 4. [Version] 越高越好 (Descending)
+                .then_with(|| b.inf.version.cmp(&a.inf.version))
         });
 
         // 提取排序后的 INF 引用
-        let sorted_infs: Vec<(&'a InfInfo, &'a HardwareEntry)> = matched_infs
-            .into_iter()
-            .map(|m| (m.inf_info, m.entry))
-            .collect();
+        let sorted_infs: Vec<(&'a InfInfo, &'a HardwareEntry)> =
+            candidates.into_iter().map(|c| (c.inf, c.entry)).collect();
 
         if !sorted_infs.is_empty() {
             results.push((device, sorted_infs));
@@ -788,47 +832,51 @@ pub fn match_driver_info<'a>(
 }
 
 /// 计算单个设备与单个 INF Entry 的 ID 匹配分数
-fn calculate_id_match(device: &HardwareInfo, entry: &HardwareEntry) -> MatchType {
-    // 准备工作：统一转小写以便比较 (如果你的数据源已经是清洗过的，可以去掉 to_lowercase)
-    // 建议在 HardwareInfo 和 InfInfo 生成时就全部转为大写或小写，这里直接比较字符串引用，性能最高。
+///
+/// # 参数
+///  - `device`: 要匹配的设备信息
+///  - `entry`: 要匹配的 INF Entry 信息
+///
+/// # 返回值
+///  - `Some(MatchType, u16)`: 匹配类型和匹配索引
+///  - `None`: 没有匹配项
+fn calculate_id_score(device: &HardwareInfo, entry: &HardwareEntry) -> Option<(MatchType, u16)> {
+    let device_hwids = &device.hardware_id;
+    let device_cids = &device.compatible_id;
+    let inf_hwids = &entry.hardware_id;
+    let inf_cids = &entry.compatible_ids;
 
-    let entry_hwid = &entry.hardware_id;
-    let entry_cids = &entry.compatible_ids;
+    // [Rank 0] Device HWID vs INF HWID
+    if let Some(idx) = device_hwids
+        .iter()
+        .position(|id| id.eq_ignore_ascii_case(inf_hwids))
+    {
+        return Some((MatchType::HardwareToHardware, idx as u16));
+    }
 
-    // Case 1: Device HWID vs INF HWID (最强 - Rank 0)
-    // 遍历设备的硬件ID列表 (通常设备有多个 HWID，越靠前越具体)
-    for dev_hwid in &device.hardware_id {
-        if dev_hwid.eq_ignore_ascii_case(entry_hwid) {
-            return MatchType::HardwareToHardware;
+    // [Rank 1] Device CID vs INF HWID
+    if let Some(idx) = device_cids
+        .iter()
+        .position(|id| id.eq_ignore_ascii_case(inf_hwids))
+    {
+        return Some((MatchType::CompatibleToHardware, idx as u16));
+    }
+
+    // [Rank 2] Device HWID vs INF CID
+    for (idx, dev_id) in device_hwids.iter().enumerate() {
+        if inf_cids.iter().any(|cid| cid.eq_ignore_ascii_case(dev_id)) {
+            return Some((MatchType::HardwareToCompatible, idx as u16));
         }
     }
 
-    // Case 2: Device HWID vs INF CID (强 - Rank 1)
-    for dev_hwid in &device.hardware_id {
-        for inf_cid in entry_cids {
-            if dev_hwid.eq_ignore_ascii_case(inf_cid) {
-                return MatchType::HardwareToCompatible;
-            }
+    // [Rank 3] Device CID vs INF CID
+    for (idx, dev_id) in device_cids.iter().enumerate() {
+        if inf_cids.iter().any(|cid| cid.eq_ignore_ascii_case(dev_id)) {
+            return Some((MatchType::CompatibleToCompatible, idx as u16));
         }
     }
 
-    // Case 3: Device CID vs INF HWID (弱 - Rank 2)
-    for dev_cid in &device.compatible_id {
-        if dev_cid.eq_ignore_ascii_case(entry_hwid) {
-            return MatchType::CompatibleToHardware;
-        }
-    }
-
-    // Case 4: Device CID vs INF CID (最弱 - Rank 3)
-    for dev_cid in &device.compatible_id {
-        for inf_cid in entry_cids {
-            if dev_cid.eq_ignore_ascii_case(inf_cid) {
-                return MatchType::CompatibleToCompatible;
-            }
-        }
-    }
-
-    MatchType::None
+    None
 }
 
 /// 检查 INF 支持的版本是否满足当前系统要求
@@ -853,143 +901,15 @@ fn is_os_compatible(inf_min_ver: &str, current_os_version: &str) -> bool {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
-pub fn match_driver_info_old(
-    hardware_info: &[HardwareInfo],
-    inf_info_list: &[InfInfo],
-    class: Option<&str>,
-) -> Vec<(HardwareInfo, Vec<InfInfo>)> {
-    // 当前系统架构
-    let current_arch = match get_native_arch() {
-        // x86
-        PROCESSOR_ARCHITECTURE_INTEL => DriverArch::NTx86,
-        // x64
-        PROCESSOR_ARCHITECTURE_AMD64 => DriverArch::NTamd64,
-        // ARM64
-        PROCESSOR_ARCHITECTURE_ARM64 => DriverArch::NTarm64,
-        // IA64
-        PROCESSOR_ARCHITECTURE_IA64 => DriverArch::NTia64,
-        // ARM
-        PROCESSOR_ARCHITECTURE_ARM => DriverArch::NTarm,
-        // 其他架构
-        _ => DriverArch::Nt,
-    };
-
-    // 过滤INF信息列表
-    let inf_info_list: Vec<InfInfo> = inf_info_list
-        .iter()
-        // 过滤不支持当前系统架构的INF
-        .filter(|inf_info| inf_info.arch.contains(&current_arch))
-        // 过滤指定驱动类别
-        .filter(|inf_info| class.is_none_or(|class| class.eq_ignore_ascii_case(&inf_info.class)))
-        .cloned()
-        .collect();
-
-    // 匹配驱动信息结果
-    let mut macth_info: Vec<(HardwareInfo, Vec<InfInfo>)> = Vec::new();
-
-    // 遍历每个设备匹配INF文件中的硬件ID和兼容ID
-    for device_info in hardware_info.iter() {
-        let mut macth_inf_list: Vec<InfInfo> = Vec::new();
-
-        // 对比设备硬件ID与INF文件中的硬件ID
-        for hwid in device_info.hardware_id.iter() {
-            let mut macth_list_item: Vec<InfInfo> = inf_info_list
-                .iter()
-                .filter(|inf_info| {
-                    inf_info
-                        .hwid
-                        .iter()
-                        .any(|inf_id| hwid.eq_ignore_ascii_case(inf_id))
-                })
-                .cloned()
-                .collect();
-
-            // 排序：高版本优先级大于低版本
-            macth_list_item.sort_by(|b, a| {
-                compare_version(&a.version, &b.version).unwrap_or(std::cmp::Ordering::Less)
-            });
-
-            macth_inf_list.append(&mut macth_list_item);
-        }
-
-        // 对比设备硬件ID与INF文件中的兼容ID
-        for hwid in device_info.hardware_id.iter() {
-            let mut macth_list_item: Vec<InfInfo> = inf_info_list
-                .iter()
-                // 过滤已匹配的INF文件
-                .filter(|inf_info| !macth_inf_list.contains(inf_info))
-                .filter(|inf_info| {
-                    inf_info
-                        .cid
-                        .iter()
-                        .any(|inf_id| hwid.eq_ignore_ascii_case(inf_id))
-                })
-                .cloned()
-                .collect();
-
-            // 排序：高版本优先级大于低版本
-            macth_list_item.sort_by(|b, a| {
-                compare_version(&a.version, &b.version).unwrap_or(std::cmp::Ordering::Less)
-            });
-
-            macth_inf_list.append(&mut macth_list_item);
-        }
-
-        // 对比设备兼容ID与INF文件中的硬件ID
-        for cid in device_info.compatible_id.iter() {
-            let mut macth_list_item: Vec<InfInfo> = inf_info_list
-                .iter()
-                // 过滤已匹配的INF文件
-                .filter(|inf_info| !macth_inf_list.contains(inf_info))
-                // 匹配INF文件中的兼容ID
-                .filter(|inf_info| {
-                    inf_info
-                        .hwid
-                        .iter()
-                        .any(|inf_id| cid.eq_ignore_ascii_case(inf_id))
-                })
-                .cloned()
-                .collect();
-
-            // 排序：高版本优先级大于低版本
-            macth_list_item.sort_by(|b, a| {
-                compare_version(&a.version, &b.version).unwrap_or(std::cmp::Ordering::Less)
-            });
-
-            macth_inf_list.append(&mut macth_list_item);
-        }
-
-        // 对比设备兼容ID与INF文件中的兼容ID
-        for cid in device_info.compatible_id.iter() {
-            let mut macth_list_item: Vec<InfInfo> = inf_info_list
-                .iter()
-                // 过滤已匹配的INF文件
-                .filter(|inf_info| !macth_inf_list.contains(inf_info))
-                // 匹配INF文件中的兼容ID
-                .filter(|inf_info| {
-                    inf_info
-                        .cid
-                        .iter()
-                        .any(|inf_id| cid.eq_ignore_ascii_case(inf_id))
-                })
-                .cloned()
-                .collect();
-
-            // 排序：高版本优先级大于低版本
-            macth_list_item.sort_by(|b, a| {
-                compare_version(&a.version, &b.version).unwrap_or(std::cmp::Ordering::Less)
-            });
-
-            macth_inf_list.append(&mut macth_list_item);
-        }
-
-        // 没有匹配到该设备的驱动信息，匹配下一个设备
-        if macth_inf_list.is_empty() {
-            continue;
-        }
-
-        macth_info.push((device_info.clone(), macth_inf_list));
-    }
-    macth_info
+/// 检查 INF 是否为扩展驱动
+///
+/// # 参数
+///  - `inf`: 要检查的 INF 驱动信息
+///
+/// # 返回值
+///  - `true`: 是扩展驱动
+///  - `false`: 不是扩展驱动
+fn is_extension_driver(inf: &InfInfo) -> bool {
+    inf.class.eq_ignore_ascii_case("Extension")
+        || inf.class.eq_ignore_ascii_case("SoftwareComponent")
 }

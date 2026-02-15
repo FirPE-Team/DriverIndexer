@@ -64,10 +64,10 @@ Written in `Rust` language, it calls Windows API to obtain hardware information 
 2. Match current operating system version
 3. Match hardware information
 
-   - Device hardware ID vs driver file hardware ID
-   - Device hardware ID vs driver file compatible ID
-   - Device compatible ID vs driver file hardware ID
-   - Device compatible ID vs driver file compatible ID
+    - Device hardware ID vs driver file hardware ID
+    - Device hardware ID vs driver file compatible ID
+    - Device compatible ID vs driver file hardware ID
+    - Device compatible ID vs driver file compatible ID
 
 ### Driver Sorting Rules
 
@@ -93,12 +93,13 @@ later, you need to rebuild the index.
 - Options
 
 | **Parameter**           | **Short Parameter** | **Description**                                                    |
-| ----------------------- | ------------------- | ------------------------------------------------------------------ |
+|-------------------------|---------------------|--------------------------------------------------------------------|
 | `--password <password>` | `-p`                | Specify driver package password for extracting the driver package. |
+| `--compress`            | `-c`                | Compress the index file using zstd algorithm.                      |
 
 - Examples
-  - `DriverIndexer.exe index D:\netcard D:\index.json`
-  - `DriverIndexer.exe index D:\netcard.7z D:\index.json`
+    - `DriverIndexer.exe index D:\netcard D:\index.json`
+    - `DriverIndexer.exe index D:\netcard.7z D:\index.json`
 
 ### Install Drivers
 
@@ -113,21 +114,22 @@ Use index files or directly specify driver package paths for installation.
 - Options
 
   | **Parameter**                | **Short Parameter** | **Description**                                                                                                                      |
-  | ---------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+    |------------------------------|---------------------|--------------------------------------------------------------------------------------------------------------------------------------|
   | `--index-path <path>`        | `-i`                | Specify index file path for faster installation. If not specified, a temporary index will be automatically created.                  |
   | `--password <password>`      | `-p`                | Specify driver package password for extracting the driver package.                                                                   |
   | `--class <class>`            | `-c`                | **Include** the specified driver class, only install drivers matching the class. Multiple classes can be specified repeatedly.       |
   | `--exclude-class <class>`    | `-e`                | **Exclude** the specified driver class, do not install drivers of the specified class. Multiple classes can be specified repeatedly. |
   | `--missing-only`             | `-m`                | Only install drivers for devices without drivers installed (i.e., devices with missing drivers).                                     |
   | `--extract-path <directory>` | `-x`                | Only extract drivers to the specified directory, do not perform installation operations. Default extraction to temporary directory.  |
+  | `--skip-verify`              | `-s`                | Skip driver index file verification.                                                                                                 |
   | `--force`                    | `-f`                | Force installation, overwrite existing drivers.                                                                                      |
 
 - Examples
-  - `DriverIndexer.exe install D:\netcard`
-  - `DriverIndexer.exe install D:\netcard.7z`
-  - `DriverIndexer.exe install D:\netcard\*.7z`
-  - `DriverIndexer.exe install D:\netcard.7z --index-path D:\netcard.json`
-  - `DriverIndexer.exe install D:\netcard\*.7z --index-path D:\netcard\*.json`
+    - `DriverIndexer.exe install D:\netcard`
+    - `DriverIndexer.exe install D:\netcard.7z`
+    - `DriverIndexer.exe install D:\netcard\*.7z`
+    - `DriverIndexer.exe install D:\netcard.7z --index-path D:\netcard.json`
+    - `DriverIndexer.exe install D:\netcard\*.7z --index-path D:\netcard\*.json`
 
 ### Install Offline System Drivers
 
@@ -139,7 +141,7 @@ drives.
 - Options
 
 | **Parameter**             | **Short Parameter** | **Description**                                                                                                                      |
-| ------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+|---------------------------|---------------------|--------------------------------------------------------------------------------------------------------------------------------------|
 | `--missing-only`          | `-m`                | Only install drivers for devices without drivers installed (i.e., devices with missing drivers).                                     |
 | `--class <class>`         | `-c`                | **Include** the specified driver class, only install drivers matching the class. Multiple classes can be specified repeatedly.       |
 | `--exclude-class <class>` | `-e`                | **Exclude** the specified driver class, do not install drivers of the specified class. Multiple classes can be specified repeatedly. |
@@ -151,7 +153,7 @@ View index subcommand, used to view information in driver index files.
 `DriverIndexer.exe info <index file path>`
 
 - Examples
-  - `DriverIndexer.exe info D:\netcard.json`
+    - `DriverIndexer.exe info D:\netcard.json`
 
 ### List Drivers
 
@@ -162,16 +164,16 @@ List drivers in the driver store of the current system or offline system.
 - Options
 
 | **Parameter**                    | **Short Parameter** | **Description**                                                                                                                            |
-| -------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+|----------------------------------|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
 | `--class <driver class>`         | `-c`                | **Include** the specified driver class, only display drivers of the specified class. Multiple classes can be specified repeatedly.         |
 | `--exclude-class <driver class>` | `-e`                | **Exclude** the specified driver class, do not display drivers of the specified class. Multiple classes can be specified repeatedly.       |
 | `--provider <driver provider>`   | `-p`                | **Include** the specified driver provider, only display drivers of the specified provider. Multiple providers can be specified repeatedly. |
 
 - Examples
-  - `DriverIndexer.exe list C:\`
-  - `DriverIndexer.exe list C:\ --class net`
-  - `DriverIndexer.exe list C:\ --exclude-class net`
-  - `DriverIndexer.exe list C:\ --provider "Qualcomm, Inc."`
+    - `DriverIndexer.exe list C:\`
+    - `DriverIndexer.exe list C:\ --class net`
+    - `DriverIndexer.exe list C:\ --exclude-class net`
+    - `DriverIndexer.exe list C:\ --provider "Qualcomm, Inc."`
 
 ### Import Drivers
 
@@ -185,14 +187,14 @@ Import drivers into the system driver store.
 - Options
 
 | **Parameter**           | **Short Parameter** | **Description**                                                    |
-| ----------------------- | ------------------- | ------------------------------------------------------------------ |
+|-------------------------|---------------------|--------------------------------------------------------------------|
 | `--password <password>` | `-p`                | Specify driver package password for extracting the driver package. |
 | `--match-device`        | `-m`                | Match current system devices, default match all devices.           |
 
 - Examples
-  - `DriverIndexer.exe import C:\ D:\netcard.7z`
-  - `DriverIndexer.exe import C:\ D:\netcard\*.7z`
-  - `DriverIndexer.exe import C:\ D:\netcard.7z --password 123456`
+    - `DriverIndexer.exe import C:\ D:\netcard.7z`
+    - `DriverIndexer.exe import C:\ D:\netcard\*.7z`
+    - `DriverIndexer.exe import C:\ D:\netcard.7z --password 123456`
 
 ### Export Drivers
 
@@ -203,18 +205,18 @@ Export specific drivers from the system driver store.
 - Options
 
 | **Parameter**                    | **Short Parameter** | **Description**                                                                                                                           |
-| -------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+|----------------------------------|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | `--inf <inf file name>`          | `-i`                | Specify driver inf file name, only export the specified driver.                                                                           |
 | `--class <driver class>`         | `-c`                | **Include** the specified driver class, only export drivers of the specified class. Multiple classes can be specified repeatedly.         |
 | `--exclude-class <driver class>` | `-e`                | **Exclude** the specified driver class, do not export drivers of the specified class. Multiple classes can be specified repeatedly.       |
 | `--provider <driver provider>`   | `-p`                | **Include** the specified driver provider, only export drivers of the specified provider. Multiple providers can be specified repeatedly. |
 
 - Examples
-  - `DriverIndexer.exe export C:\ D:\drivers`
-  - `DriverIndexer.exe export C:\ D:\drivers --inf netcard.inf`
-  - `DriverIndexer.exe export C:\ D:\drivers --class net`
-  - `DriverIndexer.exe export C:\ D:\drivers --exclude-class net`
-  - `DriverIndexer.exe export C:\ D:\drivers --provider "Qualcomm, Inc."`
+    - `DriverIndexer.exe export C:\ D:\drivers`
+    - `DriverIndexer.exe export C:\ D:\drivers --inf netcard.inf`
+    - `DriverIndexer.exe export C:\ D:\drivers --class net`
+    - `DriverIndexer.exe export C:\ D:\drivers --exclude-class net`
+    - `DriverIndexer.exe export C:\ D:\drivers --provider "Qualcomm, Inc."`
 
 ### Remove Drivers
 
@@ -225,17 +227,17 @@ Remove drivers from the system driver store.
 - Options
 
 | **Parameter**                  | **Short Parameter** | **Description**                                                                                                                           |
-| ------------------------------ | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+|--------------------------------|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
 | `--inf <inf file name>`        | `-i`                | Specify driver inf file name, only remove the specified driver.                                                                           |
 | `--class <driver class>`       | `-c`                | **Include** the specified driver class, only remove drivers of the specified class. Multiple classes can be specified repeatedly.         |
 | `--provider <driver provider>` | `-p`                | **Include** the specified driver provider, only remove drivers of the specified provider. Multiple providers can be specified repeatedly. |
 | `--all`                        | `-a`                | Remove all drivers.                                                                                                                       |
 
 - Examples
-  - `DriverIndexer.exe remove C:\ --inf netcard.inf`
-  - `DriverIndexer.exe remove C:\ --class net`
-  - `DriverIndexer.exe remove C:\ --provider "Qualcomm, Inc."`
-  - `DriverIndexer.exe remove C:\ --all`
+    - `DriverIndexer.exe remove C:\ --inf netcard.inf`
+    - `DriverIndexer.exe remove C:\ --class net`
+    - `DriverIndexer.exe remove C:\ --provider "Qualcomm, Inc."`
+    - `DriverIndexer.exe remove C:\ --all`
 
 ### Create Self-extracting Driver Package
 
@@ -247,12 +249,12 @@ and install built-in drivers on demand.
 - Options
 
 | **Parameter**           | **Short Parameter** | **Description**                                                      |
-| ----------------------- | ------------------- | -------------------------------------------------------------------- |
+|-------------------------|---------------------|----------------------------------------------------------------------|
 | `--password <password>` | `-p`                | Specify driver package password, used to encrypt the driver package. |
 
 - Examples
-  - `DriverIndexer.exe pack D:\netcard D:\netcard.exe`
-  - `DriverIndexer.exe pack D:\netcard.7z D:\netcard.exe`
+    - `DriverIndexer.exe pack D:\netcard D:\netcard.exe`
+    - `DriverIndexer.exe pack D:\netcard.7z D:\netcard.exe`
 
 ### Organize Driver Files
 
@@ -262,7 +264,7 @@ information in INF files.
 `DriverIndexer.exe organize <driver path> <export directory>`
 
 - Examples
-  - `DriverIndexer.exe organize D:\netcard D:\netcard-organized`
+    - `DriverIndexer.exe organize D:\netcard D:\netcard-organized`
 
 ### Password Encryption
 
@@ -273,15 +275,15 @@ installing driver packages by specifying the `--password <encrypted password>` p
 `DriverIndexer.exe encrypt <password>`
 
 - Examples
-  - `DriverIndexer.exe encrypt 12345678`
-  - `DriverIndexer.exe install D:\netcard.7z --password enc:XXXXX`
+    - `DriverIndexer.exe encrypt 12345678`
+    - `DriverIndexer.exe install D:\netcard.7z --password enc:XXXXX`
 
 ### Global Options
 
 `DriverIndexer.exe [global options] command [parameters] [options]`
 
 | Parameter              | Short Parameter | Description                                                                              | Default Value |
-| ---------------------- | --------------- | ---------------------------------------------------------------------------------------- | ------------- |
+|------------------------|-----------------|------------------------------------------------------------------------------------------|---------------|
 | `--debug`              | None            | Debug mode, output debug information to console                                          | None          |
 | `--language`           | None            | Set program language (`En`, `zh-cn`, `zh-tw`, `ja-jp`, `ko-kr`)                          | Auto-detect   |
 | `--log<log file path>` | None            | Enable logging. Print all running information to the specified file for troubleshooting. | None          |
@@ -299,7 +301,7 @@ specify driver classes.
     Please ensure the class names are correct.
 
 | Class Name  | Description                       |
-| ----------- | --------------------------------- |
+|-------------|-----------------------------------|
 | Display     | Display adapters                  |
 | Net         | Network adapters                  |
 | Media       | Sound, video and game controllers |

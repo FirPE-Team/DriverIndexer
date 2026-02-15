@@ -24,7 +24,7 @@ pub struct DriverIndex {
     /// 索引文件修改时间戳（Unix 时间戳）
     pub timestamp: u64,
     /// 索引文件CRC32校验值
-    pub crc32: u32,
+    pub crc32: Option<u32>,
     /// 索引数据（INF驱动信息列表）
     pub drivers: Vec<InfInfo>,
 }
@@ -47,7 +47,7 @@ pub struct InfInfo {
 
     /// 驱动签名状态（例如: "None", "Signed", "Whql" 等）
     #[serde(rename = "sign")]
-    pub signature: SignatureStatus,
+    pub signature: u8,
 
     /// 硬件ID列表
     pub hardware: Vec<HardwareEntry>,
@@ -73,6 +73,10 @@ pub struct HardwareEntry {
     /// 兼容ID列表
     #[serde(rename = "cids")]
     pub compatible_ids: Vec<String>,
+
+    /// 功能权重
+    #[serde(rename = "gg")]
+    pub feature_score: u8,
 }
 
 /// 驱动签名状态
@@ -114,7 +118,7 @@ impl DriverIndex {
     ///
     /// # 返回值
     /// - `DriverIndex`: 新的驱动索引
-    pub fn new(size: u64, timestamp: u64, crc32: u32, drivers: Vec<InfInfo>) -> Self {
+    pub fn new(size: u64, timestamp: u64, crc32: Option<u32>, drivers: Vec<InfInfo>) -> Self {
         Self {
             size,
             timestamp,
@@ -257,7 +261,7 @@ impl DriverIndex {
     /// # 返回值
     /// - `Ok(())` - 配置文件与驱动包匹配
     /// - `Err(...)` - 配置文件与驱动包不匹配
-    pub fn check_config(&self, config: &DriverIndex, driver_pack_path: &Path) -> Result<()> {
+    pub fn check_config(&self, driver_pack_path: &Path) -> Result<()> {
         let metadata = driver_pack_path
             .metadata()
             .with_context(|| format!("Failed to get metadata for {:?}", driver_pack_path))?;
@@ -267,12 +271,12 @@ impl DriverIndex {
         if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
             write_console(
                 ConsoleType::Debug,
-                &format!("driver size: {}, config size: {}", driver_size, config.size),
+                &format!("driver size: {}, config size: {}", driver_size, self.size),
             );
         }
 
         // 校验驱动包大小是否匹配
-        if driver_size != config.size {
+        if driver_size != self.size {
             return Err(anyhow!("driver pack size not match"));
         }
 
@@ -283,51 +287,54 @@ impl DriverIndex {
                 ConsoleType::Debug,
                 &format!(
                     "driver timestamp: {}, config timestamp: {}",
-                    timestamp, config.timestamp
+                    timestamp, self.timestamp
                 ),
             );
         }
 
-        // 如果大小一致，且本地与索引时间的差值（绝对值）在 2 秒以内，则认为匹配
-        if (timestamp as i64 - config.timestamp as i64).abs() <= 2 {
+        // 如果大小一致，且本地与索引时间的差值（绝对值）在 :: 秒以内，则认为匹配
+        if (timestamp as i64 - self.timestamp as i64).abs() <= 2 {
             return Ok(());
         }
 
         // 时间戳不一致，计算CRC32校验值是否匹配
-        let driver_crc32 = get_file_crc32(driver_pack_path)?;
-        if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
-            write_console(
-                ConsoleType::Debug,
-                &format!(
-                    "driver crc32: {}, config crc32: {}",
-                    driver_crc32, config.crc32
-                ),
-            );
-        }
-        if driver_crc32 != config.crc32 {
-            return Err(anyhow!("driver crc32 not match"));
-        }
+        match self.crc32 {
+            Some(crc32) => {
+                let driver_crc32 = get_file_crc32(driver_pack_path)?;
 
-        // 自动同步时间戳（同步驱动包修改时间戳）
-        match filetime::set_file_mtime(
-            driver_pack_path,
-            filetime::FileTime::from_unix_time(config.timestamp as i64, 0),
-        ) {
-            Ok(_) => {
-                if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
-                    write_console(ConsoleType::Debug, "Timestamp synced to config value.");
-                }
-            }
-            Err(e) => {
                 if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
                     write_console(
                         ConsoleType::Debug,
-                        &format!("Warning: Failed to sync timestamp: {}", e),
+                        &format!("driver crc32: {}, config crc32: {}", driver_crc32, crc32),
                     );
                 }
+                if driver_crc32 != crc32 {
+                    return Err(anyhow!("driver crc32 not match"));
+                }
+
+                // 自动同步时间戳（同步驱动包修改时间戳）
+                match filetime::set_file_mtime(
+                    driver_pack_path,
+                    filetime::FileTime::from_unix_time(self.timestamp as i64, 0),
+                ) {
+                    Ok(_) => {
+                        if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
+                            write_console(ConsoleType::Debug, "Timestamp synced to config value.");
+                        }
+                    }
+                    Err(e) => {
+                        if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
+                            write_console(
+                                ConsoleType::Debug,
+                                &format!("Warning: Failed to sync timestamp: {}", e),
+                            );
+                        }
+                    }
+                }
+                Ok(())
             }
+            None => Err(anyhow!("driver pack crc32 not match")),
         }
-        Ok(())
     }
 }
 
@@ -396,7 +403,7 @@ impl InfInfo {
             "CatalogFile.NT",      // 针对 NT 核心通用
             "CatalogFile",         // 最古老/最通用
         ];
-        let mut signature = SignatureStatus::None;
+        let mut signature = 0xFF;
         for key in SEARCH_KEYS {
             // 尝试获取该 Key 对应的字符串值
             if let Ok(filename_context) =
@@ -408,12 +415,12 @@ impl InfInfo {
                         signature = if check_catalog_signature(&catalog_file) {
                             // 检查是否包含 WHQL 签名
                             if is_whql_signature(&catalog_file) {
-                                SignatureStatus::Whql
+                                0x00
                             } else {
-                                SignatureStatus::Signed
+                                0x05
                             }
                         } else {
-                            SignatureStatus::None
+                            0x0E
                         };
                     }
                     break;
@@ -476,6 +483,20 @@ impl InfInfo {
                     .unwrap_or_else(|_| "Unknown Device".to_string());
 
                 // Field 1: Install Section Name (如 "DriverInstall_Section")，通常不需要索引
+                let install_section = SetupAPI::get_string_field(&model_context, 1)
+                    .unwrap_or_else(|_| "Unknown Install Section".to_string());
+
+                let feature_score =
+                    SetupAPI::find_first_line(handle_inf, &install_section, Some("FeatureScore"))
+                        .ok()
+                        .and_then(|ctx| SetupAPI::get_string_field(&ctx, 1).ok())
+                        .map(|s| {
+                            let s = s.trim().to_uppercase();
+                            // 解析十六进制: 0xFF -> FF
+                            u8::from_str_radix(&s[2..], 16).unwrap_or(0xFF)
+                        })
+                        .unwrap_or(0xFF); // 找不到行或解析失败时的默认值
+
                 // Field 2: Main Hardware ID (如 "PCI\VEN_10EC&DEV_8168&SUBSYS_00008168&REV_00")
                 if let Ok(hw_id) = SetupAPI::get_string_field(&model_context, 2) {
                     let hardware_id = hw_id.to_uppercase();
@@ -498,6 +519,7 @@ impl InfInfo {
                         min_os_version: os_version.clone(),
                         hardware_id: hardware_id.clone(),
                         compatible_ids: compatible_id.clone(),
+                        feature_score,
                     });
                 }
 
@@ -623,198 +645,3 @@ fn parse_section_metadata(section_name: &str) -> (DriverArch, String) {
 
     (arch, os_version)
 }
-
-// 解析INF文件（通过按行读取）
-//
-// # 参数
-// - `base_path`: inf 基本路径（父路径）
-// - `inf_file`: inf 文件路径
-//
-// # 返回值
-// - `Ok(InfInfo)`: 解析后的INF驱动信息
-// pub fn parse_from_inf_by_line(base_path: &Path, inf_file: &Path) -> Result<InfInfo> {
-//     // 打开INF文件
-//     let mut file = File::open(inf_file)
-//         .with_context(|| format!("Open inf file Failed: {:?}", inf_file))?;
-//
-//     // 读取INF文件
-//     let mut buffer: Vec<u8> = Vec::new();
-//     file.read_to_end(&mut buffer)
-//         .with_context(|| format!("Read inf file Failed: {:?}", inf_file))?;
-//
-//     // 自动识别编码并以UTF-8读取
-//     let result = chardet::detect(&buffer);
-//     let coder = label::encoding_from_whatwg_label(chardet::charset2encoding(&result.0))
-//         .with_context(|| "Detect INF file encoding failed".to_string())?;
-//     let inf_content = match coder.decode(&buffer, DecoderTrap::Ignore) {
-//         Ok(content) => content,
-//         Err(e) => {
-//             return Err(anyhow!("Decode inf file failed: {}", e));
-//         }
-//     };
-//
-//     // 去除INF内的所有 空格 与 tab符
-//     let inf_content = inf_content.replace(" ", "").replace("	", "");
-//
-//     let mut class = String::new();
-//     let mut date = String::new();
-//     let mut version = String::new();
-//     let mut arch: Vec<DriverArch> = Vec::new();
-//     let mut hwid: Vec<String> = Vec::new();
-//     let mut cid: Vec<String> = Vec::new();
-//
-//     // 按行读取
-//     for line in inf_content.lines() {
-//         // 跳过空行、注释行
-//         if line.is_empty() || line.starts_with(";") {
-//             continue;
-//         }
-//
-//         // 去除行尾注释
-//         let line = line.split(';').next().unwrap_or(line).trim();
-//
-//         // 变量替换处理
-//         let line = extract_vars(line)
-//             .iter()
-//             .fold(line.to_string(), |acc, ver| {
-//                 inf_content
-//                     .get_string_center(&format!("{ver}="), "\r\n")
-//                     .map(|v| acc.replace(&format!("%{ver}%"), v.trim_matches('"')))
-//                     .unwrap_or(acc)
-//             });
-//
-//         // 转换为小写
-//         let lower_line = line.to_lowercase();
-//
-//         // 驱动类别
-//         if let Some(c) = lower_line.strip_prefix("class=") {
-//             // 首字母大写
-//             class = c[0..1].to_uppercase() + &c[1..];
-//         }
-//
-//         // 驱动版本、日期
-//         if let Some(date_and_version) = lower_line.strip_prefix("driverver=") {
-//             let (mut d, v) = date_and_version
-//                 .split_once(',')
-//                 .map(|(d, v)| (d.trim(), v.trim()))
-//                 .unwrap_or((date_and_version, ""));
-//
-//             // 去掉前导非数字（例如 "Thu03/14/2002"、"Thu 03/14/2002"）
-//             if let Some(pos) = d.find(|c: char| c.is_ascii_digit()) {
-//                 d = &d[pos..];
-//             }
-//             date = match NaiveDate::parse_from_str(d, "%m/%d/%Y") {
-//                 Ok(dt) => dt,
-//                 Err(_) => NaiveDate::parse_from_str(d, "%Y/%m/%d")
-//                     .with_context(|| format!("parse date failed: {}", d))?,
-//             }
-//             .format("%Y-%m-%d")
-//             .to_string();
-//
-//             version = v.to_string();
-//         }
-//
-//         // 驱动平台
-//         if lower_line.contains(".ntx86") && !arch.contains(&DriverArch::NTx86) {
-//             arch.push(DriverArch::NTx86);
-//         }
-//         if lower_line.contains(".ntamd64") && !arch.contains(&DriverArch::NTamd64) {
-//             arch.push(DriverArch::NTamd64);
-//         }
-//         if lower_line.contains(".ntia64") && !arch.contains(&DriverArch::NTia64) {
-//             arch.push(DriverArch::NTia64);
-//         }
-//         if lower_line.contains(".ntarm") && !arch.contains(&DriverArch::NTarm) {
-//             arch.push(DriverArch::NTarm);
-//         }
-//         if lower_line.contains(".ntarm64") && !arch.contains(&DriverArch::NTarm64) {
-//             arch.push(DriverArch::NTarm64);
-//         }
-//         if (lower_line.contains(".nt")
-//             && !lower_line.contains(".ntx86")
-//             && !lower_line.contains(".ntamd64")
-//             && !lower_line.contains(".ntia64")
-//             && !lower_line.contains(".ntarm")
-//             && !lower_line.contains(".ntarm64"))
-//             && !arch.contains(&DriverArch::Nt)
-//         {
-//             arch.push(DriverArch::Nt);
-//         }
-//
-//         // 获取硬件ID（如果存在等于号并且逗号分隔则获取逗号之后的部分）
-//         if let Some(equal_pos) = line.find('=')
-//             && let Some(comma_pos) = line[equal_pos..].find(',')
-//         {
-//             // 获取逗号之后的部分
-//             let potential_id = &line[(equal_pos + comma_pos + 1)..].trim();
-//
-//             // 排除关键字
-//             let exclude_keywords = [
-//                 "SYSWOW32",
-//                 "SYSWOW64",
-//                 "PROGRAMDATA",
-//                 "\\X86",
-//                 "\\X64",
-//                 "\\AMD64",
-//                 "\\I386",
-//             ];
-//             if exclude_keywords
-//                 .iter()
-//                 .any(|k| potential_id.to_uppercase().contains(k))
-//             {
-//                 continue;
-//             }
-//
-//             // 逗号分隔硬件ID、兼容ID
-//             let mut first_id = true;
-//             for id in potential_id.split(",") {
-//                 // 检查硬件ID特征（必须包含反斜杠 或 开头为星号）
-//                 if id == "\\" || (!id.contains('\\') && !id.starts_with('*')) {
-//                     continue;
-//                 }
-//
-//                 // 检查是否符合硬件ID格式
-//                 if !id.chars().all(|c| {
-//                     c.is_ascii_alphanumeric()
-//                         || c == '\\'
-//                         || c == '&'
-//                         || c == '_'
-//                         || c == '.'
-//                         || c == '-'
-//                         || c == '*'
-//                         || c == ':'
-//                         || c == '{'
-//                         || c == '}'
-//                 }) {
-//                     continue;
-//                 }
-//
-//                 if first_id {
-//                     if !hwid.contains(&id.to_uppercase()) {
-//                         hwid.push(id.to_uppercase());
-//                     }
-//                     first_id = false;
-//                 } else {
-//                     if !cid.contains(&id.to_uppercase()) {
-//                         cid.push(id.to_uppercase());
-//                     }
-//                 }
-//             }
-//         }
-//     }
-//
-//     // 转换为相对路径
-//     let inf_path = inf_file
-//         .strip_prefix(base_path)
-//         .with_context(|| "Strip inf path prefix failed")?;
-//
-//     Ok(InfInfo {
-//         path: inf_path.to_string_lossy().to_string(),
-//         class,
-//         arch,
-//         date,
-//         version,
-//         hwid,
-//         cid,
-//     })
-// }
