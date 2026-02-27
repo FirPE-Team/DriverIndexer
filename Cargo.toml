@@ -1,6 +1,6 @@
 [package]
 name = "DriverIndexer"
-version = "2.2.0"
+version = "2.2.1"
 authors = ["FirTech"]
 edition = "2024"
 build = "build.rs"
@@ -17,7 +17,7 @@ thunk-rs = "0.3.5"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-clap = { version = "4.5.57", features = ["derive"] }
+clap = { version = "4.5.60", features = ["derive"] }
 glob = "0.3.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0"
@@ -26,11 +26,11 @@ rust-embed = "8.11.0"
 lazy_static = "1.5.0"
 console = "0.16.2"
 chrono = "0.4"
-anyhow = "1.0.101"
+anyhow = "1.0.102"
 remove_dir_all = "0.7"
 libloading = "0.9.0"
 fastrand = "2.3.0"
-goblin = "0.10.4"
+goblin = "0.10.5"
 walkdir = "2.5.0"
 threadpool = "1.8.1"
 num_cpus = "1.17.0"
@@ -38,7 +38,7 @@ sys-locale = "0.3.2"
 rust-i18n = "3.1.5"
 bincode = "2.0.1"
 exitcode = "1.1.2"
-windows-version = "0.1"
+windows-version = "0.1.7"
 windows = { version = "0.62.2", features = [
     "Win32_Globalization",
     "Win32_Devices_DeviceAndDriverInstallation",

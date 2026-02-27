@@ -79,19 +79,6 @@ pub struct HardwareEntry {
     pub feature_score: u8,
 }
 
-/// 驱动签名状态
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Encode, Decode,
-)]
-pub enum SignatureStatus {
-    /// 未签名或签名无效（不可用）
-    None,
-    /// 普通商业签名 (虽然受信任，但优先级较低)
-    Signed,
-    /// 微软 WHQL 签名 (最高优先级)
-    Whql,
-}
-
 /// 系统架构
 /// https://learn.microsoft.com/zh-cn/windows-hardware/drivers/install/creating-inf-files-for-multiple-platforms-and-operating-systems
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Encode, Decode)]
@@ -493,7 +480,8 @@ impl InfInfo {
                         .map(|s| {
                             let s = s.trim().to_uppercase();
                             // 解析十六进制: 0xFF -> FF
-                            u8::from_str_radix(&s[2..], 16).unwrap_or(0xFF)
+                            let clean_str = s.trim_start_matches("0X");
+                            u8::from_str_radix(clean_str, 16).unwrap_or(0xFF)
                         })
                         .unwrap_or(0xFF); // 找不到行或解析失败时的默认值
 
