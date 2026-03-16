@@ -585,7 +585,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             system_drive,
             driver_path: drive_path,
             password,
-            match_all,
+            match_device,
         } => {
             // 创建临时目录
             if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
@@ -644,7 +644,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                             system_drive,
                             &item,
                             password.as_deref(),
-                            *match_all,
+                            *match_device,
                         ) {
                             Ok((success_count, fail_count, total_count)) => {
                                 write_console(
@@ -680,7 +680,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 system_drive,
                 drive_path,
                 password.as_deref(),
-                *match_all,
+                *match_device,
             ) {
                 Ok((success_count, fail_count, total_count)) => {
                     write_console(
@@ -705,6 +705,8 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         Command::Export {
             system_drive,
             export_path,
+            include_system,
+            system_only,
             inf,
             class,
             exclude_class,
@@ -720,6 +722,8 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             match driver_manger.export_driver(
                 system_drive,
                 export_path,
+                *include_system,
+                *system_only,
                 inf.as_deref(),
                 class.as_deref(),
                 exclude_class.as_deref(),
@@ -747,6 +751,8 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         // 卸载驱动程序
         Command::Remove {
             system_drive,
+            include_system,
+            system_only,
             inf,
             class,
             provider,
@@ -761,6 +767,8 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             let driver_manger = DriverManger::new(system_drive)?;
             match driver_manger.remove_driver(
                 system_drive,
+                *include_system,
+                *system_only,
                 inf.as_deref(),
                 class.as_deref(),
                 provider.as_deref(),
@@ -789,6 +797,8 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         // 列举驱动程序
         Command::List {
             system_drive,
+            include_system,
+            system_only,
             class,
             exclude_class,
             provider,
@@ -797,6 +807,8 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
 
             match driver_manger.list_driver(
                 system_drive,
+                *include_system,
+                *system_only,
                 class.as_deref(),
                 exclude_class.as_deref(),
                 provider.as_deref(),

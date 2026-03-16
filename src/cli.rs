@@ -160,10 +160,10 @@ pub enum Command {
         #[clap(help(t!("options.package-password").to_string()))]
         password: Option<String>,
 
-        /// 是否匹配所有设备
+        /// 是否匹配当前系统的设备
         #[clap(short, long)]
         #[clap(help(t!("options.match-device").to_string()))]
-        match_all: bool,
+        match_device: bool,
     },
 
     /// 导出驱动子命令
@@ -178,6 +178,16 @@ pub enum Command {
         #[clap(index = 2)]
         #[clap(help(t!("options.export-path").to_string()))]
         export_path: PathBuf,
+
+        /// 包含系统自带的驱动
+        #[clap(short = 's', long = "system")]
+        #[clap(help(t!("options.include-system-driver").to_string()))]
+        include_system: bool,
+
+        /// 仅显示系统自带驱动
+        #[clap(long = "system-only", conflicts_with = "include_system")]
+        #[clap(help(t!("options.only-system-driver").to_string()))]
+        system_only: bool,
 
         /// 指定驱动名称
         #[clap(short, long)]
@@ -214,6 +224,16 @@ pub enum Command {
         #[clap(help(t!("options.system-drive").to_string()))]
         system_drive: PathBuf,
 
+        /// 包含系统自带的驱动
+        #[clap(short = 's', long = "system")]
+        #[clap(help(t!("options.include-system-driver").to_string()))]
+        include_system: bool,
+
+        /// 仅显示系统自带驱动
+        #[clap(long = "system-only", conflicts_with = "include_system")]
+        #[clap(help(t!("options.only-system-driver").to_string()))]
+        system_only: bool,
+
         /// 指定驱动名称
         #[clap(short, long)]
         #[clap(help(t!("options.driver-name").to_string()))]
@@ -242,6 +262,16 @@ pub enum Command {
         #[clap(index = 1, value_parser = exist_system_parser)]
         #[clap(help(t!("options.system-drive").to_string()))]
         system_drive: PathBuf,
+
+        /// 包含系统自带的驱动
+        #[clap(short = 's', long = "system")]
+        #[clap(help(t!("options.include-system-driver").to_string()))]
+        include_system: bool,
+
+        /// 仅显示系统自带驱动
+        #[clap(long = "system-only", conflicts_with = "include_system")]
+        #[clap(help(t!("options.only-system-driver").to_string()))]
+        system_only: bool,
 
         /// 指定驱动类别
         #[clap(short, long)]

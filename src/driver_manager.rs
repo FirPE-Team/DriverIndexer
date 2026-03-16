@@ -142,6 +142,8 @@ impl DriverManger {
     /// # 参数
     ///
     /// - `system_drive`: 系统盘路径
+    /// - `include_system`: 是否包含系统驱动程序，默认值为 `true`
+    /// - `system_only`: 是否仅包含系统驱动程序，默认值为 `false`
     /// - `class`: 驱动程序类名，可选，用于筛选特定类别的驱动程序
     /// - `exclude_class`: 排除的驱动程序类名，可选，用于筛选出不包含指定类别的驱动程序
     /// - `provider`: 驱动程序供应商名，可选，用于筛选出指定供应商的驱动程序
@@ -153,6 +155,8 @@ impl DriverManger {
     pub fn list_driver(
         &self,
         system_drive: &Path,
+        include_system: bool,
+        system_only: bool,
         class: Option<&[String]>,
         exclude_class: Option<&[String]>,
         provider: Option<&[String]>,
@@ -182,8 +186,28 @@ impl DriverManger {
 
         let mut result = String::new();
 
-        let driver_list = get_file_list(&system_root.join("INF"), "oem*.inf")
-            .with_context(|| "Get driver list failed")?;
+        let driver_list = if system_only {
+            // 仅系统驱动。获取所有，然后过滤掉 oem*.inf
+            get_file_list(&system_root.join("INF"), "*.inf")
+                .with_context(|| "Get driver list failed")?
+                .into_iter()
+                .filter(|path| {
+                    !path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|s| s.to_lowercase().starts_with("oem"))
+                        .unwrap_or(false)
+                })
+                .collect()
+        } else if include_system {
+            // 包含系统和第三方。获取所有 *.inf
+            get_file_list(&system_root.join("INF"), "*.inf")
+                .with_context(|| "Get driver list failed")?
+        } else {
+            // 默认模式，仅第三方。获取 oem*.inf
+            get_file_list(&system_root.join("INF"), "oem*.inf")
+                .with_context(|| "Get driver list failed")?
+        };
         if driver_list.is_empty() {
             return Err(anyhow!(t!("no-driver-found")));
         }
@@ -536,6 +560,8 @@ impl DriverManger {
         &self,
         system_drive: &Path,
         out_path: &Path,
+        include_system: bool,
+        system_only: bool,
         inf: Option<&str>,
         class: Option<&[String]>,
         exclude_class: Option<&[String]>,
@@ -568,8 +594,31 @@ impl DriverManger {
         let mut fail_count = 0;
         let mut total_count = 0;
 
+        let driver_list = if system_only {
+            // 仅系统驱动。获取所有然后过滤掉 oem*.inf
+            get_file_list(&system_root.join("INF"), "*.inf")
+                .with_context(|| "Get driver list failed")?
+                .into_iter()
+                .filter(|path| {
+                    !path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|s| s.to_lowercase().starts_with("oem"))
+                        .unwrap_or(false)
+                })
+                .collect()
+        } else if include_system {
+            // 包含系统和第三方。获取所有 *.inf
+            get_file_list(&system_root.join("INF"), "*.inf")
+                .with_context(|| "Get driver list failed")?
+        } else {
+            // 默认模式，仅第三方。获取 oem*.inf
+            get_file_list(&system_root.join("INF"), "oem*.inf")
+                .with_context(|| "Get driver list failed")?
+        };
+
         // 遍历驱动库
-        for item in get_file_list(&system_root.join("INF"), "oem*.inf")? {
+        for item in driver_list {
             if let Some((inf_path, _info_opt)) =
                 self.driver_store
                     .find_driver_package(store_handle, &item, arch)
@@ -727,6 +776,8 @@ impl DriverManger {
     pub fn remove_driver(
         &self,
         system_drive: &Path,
+        include_system: bool,
+        system_only: bool,
         inf: Option<&str>,
         class: Option<&[String]>,
         provider: Option<&[String]>,
@@ -760,10 +811,31 @@ impl DriverManger {
         let mut fail_count = 0;
         let mut total_count = 0;
 
+        let driver_list = if system_only {
+            // 仅系统驱动。获取所有然后过滤掉 oem*.inf
+            get_file_list(&system_root.join("INF"), "*.inf")
+                .with_context(|| "Get driver list failed")?
+                .into_iter()
+                .filter(|path| {
+                    !path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|s| s.to_lowercase().starts_with("oem"))
+                        .unwrap_or(false)
+                })
+                .collect()
+        } else if include_system {
+            // 包含系统和第三方。获取所有 *.inf
+            get_file_list(&system_root.join("INF"), "*.inf")
+                .with_context(|| "Get driver list failed")?
+        } else {
+            // 默认模式，仅第三方。获取 oem*.inf
+            get_file_list(&system_root.join("INF"), "oem*.inf")
+                .with_context(|| "Get driver list failed")?
+        };
+
         // 遍历所有驱动
-        for item in get_file_list(&system_root.join("INF"), "oem*.inf")
-            .with_context(|| "Get driver list failed")?
-        {
+        for item in driver_list {
             if let Some((inf_path, _info_opt)) =
                 self.driver_store
                     .find_driver_package(store_handle, &item, arch)

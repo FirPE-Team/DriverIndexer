@@ -114,7 +114,7 @@ Use index files or directly specify driver package paths for installation.
 - Options
 
   | **Parameter**                | **Short Parameter** | **Description**                                                                                                                      |
-    |------------------------------|---------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+      |------------------------------|---------------------|--------------------------------------------------------------------------------------------------------------------------------------|
   | `--index-path <path>`        | `-i`                | Specify index file path for faster installation. If not specified, a temporary index will be automatically created.                  |
   | `--password <password>`      | `-p`                | Specify driver package password for extracting the driver package.                                                                   |
   | `--class <class>`            | `-c`                | **Include** the specified driver class, only install drivers matching the class. Multiple classes can be specified repeatedly.       |
@@ -165,6 +165,8 @@ List drivers in the driver store of the current system or offline system.
 
 | **Parameter**                    | **Short Parameter** | **Description**                                                                                                                            |
 |----------------------------------|---------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
+| `--system`                       | `-s`                | **Include** system drivers.                                                                                                                |
+| `--system-only`                  | -                   | **Exclude** non-system drivers.                                                                                                            |
 | `--class <driver class>`         | `-c`                | **Include** the specified driver class, only display drivers of the specified class. Multiple classes can be specified repeatedly.         |
 | `--exclude-class <driver class>` | `-e`                | **Exclude** the specified driver class, do not display drivers of the specified class. Multiple classes can be specified repeatedly.       |
 | `--provider <driver provider>`   | `-p`                | **Include** the specified driver provider, only display drivers of the specified provider. Multiple providers can be specified repeatedly. |
@@ -206,6 +208,8 @@ Export specific drivers from the system driver store.
 
 | **Parameter**                    | **Short Parameter** | **Description**                                                                                                                           |
 |----------------------------------|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| `--system`                       | `-s`                | **Include** system drivers.                                                                                                               |
+| `--system-only`                  | -                   | **Exclude** non-system drivers.                                                                                                           |
 | `--inf <inf file name>`          | `-i`                | Specify driver inf file name, only export the specified driver.                                                                           |
 | `--class <driver class>`         | `-c`                | **Include** the specified driver class, only export drivers of the specified class. Multiple classes can be specified repeatedly.         |
 | `--exclude-class <driver class>` | `-e`                | **Exclude** the specified driver class, do not export drivers of the specified class. Multiple classes can be specified repeatedly.       |
@@ -300,27 +304,25 @@ specify driver classes.
 
     Please ensure the class names are correct.
 
-| Class Name  | Description                       |
-|-------------|-----------------------------------|
-| Display     | Display adapters                  |
-| Net         | Network adapters                  |
-| Media       | Sound, video and game controllers |
-| System      | System devices                    |
-| HID         | Human Interface Devices           |
-| USB         | USB controllers                   |
-| Bluetooth   | Bluetooth devices                 |
-| Printer     | Printers                          |
-| Imaging     | Imaging devices                   |
-| SCSIAdapter | SCSI and RAID controllers         |
-| DiskDrive   | Disk drives                       |
-| Computer    | Computer                          |
-| Processor   | Processor                         |
-| Monitor     | Monitor                           |
-| Keyboard    | Keyboard                          |
-| Pointer     | Mouse and other pointing devices  |
-| Modem       | Modem                             |
-| Media       | Multimedia devices                |
-| System      | System devices                    |
+| Class Name  | Description                      |
+|-------------|----------------------------------|
+| Display     | Display adapters                 |
+| Net         | Network adapters                 |
+| HID         | Human Interface Devices          |
+| USB         | USB controllers                  |
+| Bluetooth   | Bluetooth devices                |
+| Printer     | Printers                         |
+| Imaging     | Imaging devices                  |
+| SCSIAdapter | SCSI and RAID controllers        |
+| DiskDrive   | Disk drives                      |
+| Computer    | Computer                         |
+| Processor   | Processor                        |
+| Monitor     | Monitor                          |
+| Keyboard    | Keyboard                         |
+| Pointer     | Mouse and other pointing devices |
+| Modem       | Modem                            |
+| Media       | Multimedia devices               |
+| System      | System devices                   |
 
 ## Build
 
