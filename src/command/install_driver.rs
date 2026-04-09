@@ -464,6 +464,14 @@ impl DriverInstaller {
 
         // 遍历离线系统加载驱动
         for system_drive in offline_system_drive_list {
+            let driver_path = system_drive
+                .join("Windows")
+                .join("System32")
+                .join("DriverStore")
+                .join("FileRepository");
+            if !driver_path.exists() {
+                continue;
+            }
             write_console(
                 ConsoleType::Info,
                 &t!(
@@ -472,7 +480,7 @@ impl DriverInstaller {
                 ),
             );
             self.install_driver(
-                &system_drive,
+                &driver_path,
                 None,
                 None,
                 true,

@@ -26,7 +26,8 @@ use crate::driver_manager::DriverManger;
 use crate::utils::console::{write_console, ConsoleType};
 use crate::utils::setupapi::SetupAPI;
 use crate::utils::utils::{
-    decrypt_password, encrypt_password, get_file_list, get_temp_name, launched_from_explorer,
+    decrypt_password, encrypt_password, get_file_list, get_temp_name,
+    launched_from_explorer,
 };
 use anyhow::{anyhow, Context};
 use clap::Parser;
@@ -616,7 +617,13 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 }
             }
 
-            let driver_manger = DriverManger::new(system_drive)?;
+            let driver_manger = match DriverManger::new(system_drive) {
+                Ok(driver_manger) => driver_manger,
+                Err(e) => {
+                    write_console(ConsoleType::Error, &e.to_string());
+                    return Err(e);
+                }
+            };
 
             // 处理通配符
             if let Some(driver_name) = drive_path.file_name() {
@@ -718,7 +725,14 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 process::exit(exitcode::IOERR);
             }
 
-            let driver_manger = DriverManger::new(system_drive)?;
+            let driver_manger = match DriverManger::new(system_drive) {
+                Ok(driver_manger) => driver_manger,
+                Err(e) => {
+                    write_console(ConsoleType::Error, &e.to_string());
+                    return Err(e);
+                }
+            };
+
             match driver_manger.export_driver(
                 system_drive,
                 export_path,
@@ -764,7 +778,14 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 process::exit(exitcode::IOERR);
             }
 
-            let driver_manger = DriverManger::new(system_drive)?;
+            let driver_manger = match DriverManger::new(system_drive) {
+                Ok(driver_manger) => driver_manger,
+                Err(e) => {
+                    write_console(ConsoleType::Error, &e.to_string());
+                    return Err(e);
+                }
+            };
+
             match driver_manger.remove_driver(
                 system_drive,
                 *include_system,
@@ -803,8 +824,13 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             exclude_class,
             provider,
         } => {
-            let driver_manger = DriverManger::new(system_drive)?;
-
+            let driver_manger = match DriverManger::new(system_drive) {
+                Ok(driver_manger) => driver_manger,
+                Err(e) => {
+                    write_console(ConsoleType::Error, &e.to_string());
+                    return Err(e);
+                }
+            };
             match driver_manger.list_driver(
                 system_drive,
                 *include_system,

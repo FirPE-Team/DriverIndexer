@@ -75,6 +75,13 @@ impl DriverManger {
                 );
             }
 
+            // 如果当前是 Win7 (6.1) 或更老，但离线系统是 Win8+ (>= 6.2)则不支持
+            if (current_major < 6 || (current_major == 6 && current_minor < 2))
+                && (offline_major > 6 || (offline_major == 6 && offline_minor >= 2))
+            {
+                return Err(anyhow!(t!("not-support-call")));
+            }
+
             // 获取离线系统架构
             let offline_arch = get_offline_system_arch(system_drive)
                 .with_context(|| "get offline system arch failed")?;
@@ -85,37 +92,20 @@ impl DriverManger {
                 );
             }
 
-            // 离线系统架构必须与当前程序架构一致
-            if env::consts::ARCH == "x86" && offline_arch != 0x014c {
-                return Err(anyhow!(t!("not-support-call")));
-            } else if env::consts::ARCH == "x86_64" && offline_arch != 0x8664 {
-                return Err(anyhow!(t!("not-support-call")));
-            } else if env::consts::ARCH == "aarch64" && offline_arch != 0xAA64 {
-                return Err(anyhow!(t!("not-support-call")));
-            }
-
-            // 如果当前是 Win7 (6.1) 或更老，但离线系统是 Win8+ (>= 6.2)则不支持
-            if (current_major < 6 || (current_major == 6 && current_minor < 2))
-                && (offline_major > 6 || (offline_major == 6 && offline_minor >= 2))
-            {
-                return Err(anyhow!(t!("not-support-call")));
-            }
-
             // 判断系统版本 (以 Win8 / NT 6.2 为分水岭)
             if offline_major < 6 || (offline_major == 6 && offline_minor < 2) {
                 // 离线系统是 Win7 (及以下)，为了保证数据库写入兼容性，优先用离线系统的 drvstore.dll
-                let offline_dll_path = system_drive
-                    .join("Windows")
-                    .join("System32")
-                    .join("drvstore.dll");
-                if !offline_dll_path.exists() {
-                    write_console(
-                        ConsoleType::Warning,
-                        "Offline drvstore.dll not found, falling back to current system.",
-                    );
-                    return Err(anyhow!("offline drvstore.dll not found"));
+                match (env::consts::ARCH, offline_arch) {
+                    ("x86", 0x014c) | ("x86_64", 0x8664) | ("aarch64", 0xAA64) => system_drive
+                        .join("Windows")
+                        .join("System32")
+                        .join("drvstore.dll"),
+                    ("x86", 0x8664) | ("aarch64", 0x014c) => system_drive
+                        .join("Windows")
+                        .join("SysWOW64")
+                        .join("drvstore.dll"),
+                    (_, _) => return Err(anyhow!(t!("not-support-call"))),
                 }
-                offline_dll_path
             } else {
                 // 离线系统是 Win8, Win10, Win11
                 PathBuf::from("drvstore.dll")
@@ -221,21 +211,40 @@ impl DriverManger {
                 let inf_path = PathBuf::from(&path);
 
                 // 打开驱动
-                let driver_handle = self
-                    .driver_store
-                    .open_driver(&inf_path, arch)
-                    .with_context(|| "Open driver failed")?;
+                let driver_handle = match self.driver_store.open_driver(&inf_path, arch) {
+                    Ok(handle) => handle,
+                    Err(e) => {
+                        write_console(
+                            ConsoleType::Error,
+                            &format!("Open driver failed: {}({})", inf_path.display(), e),
+                        );
+                        continue;
+                    }
+                };
 
                 // 获取驱动基本信息
-                let driver_info = self
-                    .driver_store
-                    .get_version_info(driver_handle)
-                    .with_context(|| "Get driver info failed")?;
+                let driver_info = match self.driver_store.get_version_info(driver_handle) {
+                    Ok(info) => info,
+                    Err(e) => {
+                        write_console(
+                            ConsoleType::Error,
+                            &format!("Get driver info failed: {}({})", inf_path.display(), e),
+                        );
+                        continue;
+                    }
+                };
 
                 // 关闭驱动
-                self.driver_store
-                    .close_package(driver_handle)
-                    .with_context(|| "Close driver failed")?;
+                match self.driver_store.close_package(driver_handle) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        write_console(
+                            ConsoleType::Error,
+                            &format!("Close driver failed: {}({})", inf_path.display(), e),
+                        );
+                        continue;
+                    }
+                }
 
                 // 指定驱动类
                 if let Some(class) = class
@@ -880,7 +889,7 @@ impl DriverManger {
                 }
 
                 // 是否删除所有驱动
-                if !all {
+                if !all && inf.is_none() && class.is_none() && provider.is_none() {
                     continue;
                 }
 

@@ -3,8 +3,10 @@ use anyhow::{anyhow, Context, Result};
 use chrono::Local;
 use crc32fast::Hasher;
 use glob::MatchOptions;
+use goblin::pe::options::ParseOptions;
 use goblin::pe::PE;
 use magic_crypt::{new_magic_crypt, MagicCryptTrait};
+use memmap2::Mmap;
 use std::cmp::Ordering;
 use std::ffi::c_void;
 use std::ffi::OsString;
@@ -449,9 +451,9 @@ pub fn get_current_system_root() -> Result<PathBuf> {
 /// 判断是否运行在64位系统中
 ///
 /// # 返回值
-/// - `Ok(bool)`: 运行在64位系统中
-///   - `true`: 运行在64位系统中
-///   - `false`: 运行在32位系统中
+/// - `Ok(bool)`
+///   - `true`: 当前是32位程序运行在64位系统上
+///   - `false`: 当前是64位程序（或32位程序运行在32位系统上）
 /// - `Err(...)`：获取系统信息失败
 ///
 /// # 说明
@@ -963,4 +965,49 @@ pub fn get_file_crc32(path: &Path) -> std::io::Result<u32> {
         hasher.update(&buffer[..count]);
     }
     Ok(hasher.finalize())
+}
+
+/// 获取程序架构
+///
+/// # 参数
+/// - `program`: 程序路径
+///
+/// # 返回值
+/// - `Ok(u16)`: PE 文件 Machine 字段
+///   - 0x014c → x86
+///   - 0x8664 → x64
+///   - 0xAA64 → ARM64
+/// - `Err(...)`：读取或解析失败
+pub fn get_program_arch(program: impl AsRef<Path>) -> Result<u16> {
+    // open file and mmap
+    let file = File::open(program)?;
+    let mmap = unsafe { Mmap::map(&file)? };
+
+    let mut options = ParseOptions::default();
+    options.parse_attribute_certificates = false;
+    options.parse_tls_data = false;
+
+    if let Ok(pe) = PE::parse_with_opts(&mmap, &options) {
+        return Ok(pe.header.coff_header.machine);
+    }
+
+    // 解析基本头部
+    if mmap.len() < 0x40 {
+        return Err(anyhow!("file too small to be a valid PE"));
+    }
+    let e_lfanew = u32::from_le_bytes(mmap[0x3C..0x40].try_into()?) as usize;
+    if mmap.len() < e_lfanew + 4 + 20 {
+        return Err(anyhow!("invalid PE header offset or file truncated"));
+    }
+    if &mmap[e_lfanew..e_lfanew + 4] != b"PE\0\0" {
+        return Err(anyhow!("invalid PE signature"));
+    }
+
+    let coff_off = e_lfanew + 4;
+    // machine (u16)
+    if mmap.len() < coff_off + 2 {
+        return Err(anyhow!("truncated COFF header"));
+    }
+    let machine = u16::from_le_bytes(mmap[coff_off..coff_off + 2].try_into()?);
+    Ok(machine)
 }
