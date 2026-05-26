@@ -549,9 +549,11 @@ impl DriverInstaller {
         };
 
         // 解压全部 CAT 文件
-        let _ = self
-            .zip
-            .extract_files_from_path(driver_pack_path, password, "*.cat", extract_path);
+        if driver_pack_path.is_file() {
+            let _ = self
+                .zip
+                .extract_files_from_path(driver_pack_path, password, "*.cat", extract_path);
+        }
 
         // 列出INF文件
         let inf_list = get_file_list(drivers_path, "*.inf")?;
