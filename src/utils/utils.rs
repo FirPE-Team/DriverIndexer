@@ -1,15 +1,15 @@
 use crate::{Asset, SECRET_KEY};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::Local;
 use crc32fast::Hasher;
 use glob::MatchOptions;
-use goblin::pe::options::ParseOptions;
 use goblin::pe::PE;
-use magic_crypt::{new_magic_crypt, MagicCryptTrait};
+use goblin::pe::options::ParseOptions;
+use magic_crypt::{MagicCryptTrait, new_magic_crypt};
 use memmap2::Mmap;
 use std::cmp::Ordering;
-use std::ffi::c_void;
 use std::ffi::OsString;
+use std::ffi::c_void;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::iter::repeat_with;
@@ -17,43 +17,43 @@ use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
 use std::{env, fs, io, ptr};
 use walkdir::WalkDir;
-use windows::core::{BOOL, GUID, HSTRING, PWSTR};
 use windows::Win32::Foundation::{FILETIME, HANDLE, HWND, MAX_PATH, SYSTEMTIME};
 use windows::Win32::Security::WinTrust::{
-    WinVerifyTrust, WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA,
-    WINTRUST_DATA_0, WINTRUST_DATA_PROVIDER_FLAGS, WINTRUST_FILE_INFO, WTD_CHOICE_FILE,
-    WTD_REVOKE_NONE, WTD_STATEACTION_CLOSE, WTD_STATEACTION_VERIFY, WTD_UICONTEXT_EXECUTE,
-    WTD_UI_NONE,
+    WINTRUST_ACTION_GENERIC_VERIFY_V2, WINTRUST_DATA, WINTRUST_DATA_0,
+    WINTRUST_DATA_PROVIDER_FLAGS, WINTRUST_FILE_INFO, WTD_CHOICE_FILE, WTD_REVOKE_NONE,
+    WTD_STATEACTION_CLOSE, WTD_STATEACTION_VERIFY, WTD_UI_NONE, WTD_UICONTEXT_EXECUTE,
+    WinVerifyTrust,
 };
 use windows::Win32::Storage::FileSystem::{
-    GetDiskFreeSpaceExW, GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW,
-    VS_FIXEDFILEINFO,
+    GetDiskFreeSpaceExW, GetFileVersionInfoSizeW, GetFileVersionInfoW, VS_FIXEDFILEINFO,
+    VerQueryValueW,
 };
 use windows::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+    CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::System::Ioctl::{
-    PropertyStandardQuery, StorageDeviceProperty, IOCTL_STORAGE_QUERY_PROPERTY,
-    STORAGE_DEVICE_DESCRIPTOR, STORAGE_PROPERTY_QUERY,
+    IOCTL_STORAGE_QUERY_PROPERTY, PropertyStandardQuery, STORAGE_DEVICE_DESCRIPTOR,
+    STORAGE_PROPERTY_QUERY, StorageDeviceProperty,
 };
 use windows::Win32::System::SystemInformation::{
     GetNativeSystemInfo, GetWindowsDirectoryW, PROCESSOR_ARCHITECTURE, SYSTEM_INFO,
 };
 use windows::Win32::System::Threading::{GetCurrentProcess, GetCurrentProcessId, IsWow64Process};
 use windows::Win32::System::Time::FileTimeToSystemTime;
+use windows::core::{BOOL, GUID, HSTRING, PWSTR};
 use windows::{
-    core::PCWSTR,
     Win32::{
         Foundation::{CloseHandle, INVALID_HANDLE_VALUE},
-        Storage::FileSystem::GetDriveTypeW,
         Storage::FileSystem::FILE_ATTRIBUTE_NORMAL,
+        Storage::FileSystem::GetDriveTypeW,
         Storage::FileSystem::{
             CreateFileW, FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_SHARE_READ, FILE_SHARE_WRITE,
             OPEN_EXISTING,
         },
-        System::Ioctl::IOCTL_STORAGE_EJECT_MEDIA,
         System::IO::DeviceIoControl,
+        System::Ioctl::IOCTL_STORAGE_EJECT_MEDIA,
     },
+    core::PCWSTR,
 };
 
 /// 写到文件
@@ -523,10 +523,10 @@ pub fn find_offline_system() -> Vec<PathBuf> {
     for letter in b'C'..=b'Z' {
         let drive = format!("{}:\\", letter as char);
         // 跳过当前系统盘
-        if let Ok(current_system_drive) = &current_system_drive {
-            if drive.eq_ignore_ascii_case(&format!("{}\\", current_system_drive)) {
-                continue;
-            }
+        if let Ok(current_system_drive) = &current_system_drive
+            && drive.eq_ignore_ascii_case(&format!("{}\\", current_system_drive))
+        {
+            continue;
         }
         let path = PathBuf::from(format!("{}\\", drive));
         if path.exists()

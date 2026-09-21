@@ -1,6 +1,6 @@
-use crate::utils::console::{write_console, ConsoleType};
+use crate::utils::console::{ConsoleType, write_console};
 use crate::utils::utils::{eject_drive, get_drive_bus, get_drive_space, get_drive_type};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use rust_i18n::t;
 use std::fs;
 

@@ -4,7 +4,6 @@ mod Tests {
     use crate::hardware::enumerate_hardware;
     use crate::utils::utils::{check_catalog_signature, compare_version};
     use std::cmp::Ordering;
-    use std::env::temp_dir;
     use std::path::Path;
 
     // 版本号对比测试
@@ -75,7 +74,6 @@ mod Tests {
         // assert!(info_str.contains("Driver Classes: [\"Net\", \"MEDIA\"]"));
 
         // 测试JSON序列化和反序列化
-        let temp_path = temp_dir();
         // 测试JSON序列化
         assert!(driver_index.to_json().is_ok());
     }

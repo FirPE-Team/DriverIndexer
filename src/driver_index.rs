@@ -1,21 +1,21 @@
-use crate::utils::console::{write_console, ConsoleType};
+use crate::DEBUG;
+use crate::utils::console::{ConsoleType, write_console};
 use crate::utils::setupapi::SetupAPI;
 use crate::utils::utils::{
     check_catalog_signature, compare_version, format_bytes, is_whql_signature,
 };
-use crate::DEBUG;
-use anyhow::{anyhow, Context, Result};
-use bincode::{config, Decode, Encode};
+use anyhow::{Context, Result, anyhow};
+use bincode::{Decode, Encode, config};
 use chrono::NaiveDate;
 use rust_i18n::t;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::time::UNIX_EPOCH;
-use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
 pub const DRIVER_INDEX_FORMAT_VERSION: u16 = 2;
@@ -278,7 +278,9 @@ impl DriverIndex {
             ));
         }
         if self.source_fingerprint.is_empty() {
-            return Err(anyhow!("driver index has no source fingerprint, rebuild the index"));
+            return Err(anyhow!(
+                "driver index has no source fingerprint, rebuild the index"
+            ));
         }
         Ok(())
     }
@@ -387,7 +389,10 @@ pub fn source_fingerprint(path: &Path) -> Result<String> {
                     .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
                     .map_or(0, |value| value.as_secs());
                 files.push((
-                    relative.to_string_lossy().replace('\\', "/").to_ascii_lowercase(),
+                    relative
+                        .to_string_lossy()
+                        .replace('\\', "/")
+                        .to_ascii_lowercase(),
                     metadata.len(),
                     modified,
                 ));
@@ -432,14 +437,14 @@ impl InfInfo {
             .with_context(|| "Open inf file failed".to_string())?;
 
         // 查找Class字段
-        let class_context = SetupAPI::find_first_line(handle_inf, "Version", Some("Class"))
+        let class_context = SetupAPI::find_first_line(&handle_inf, "Version", Some("Class"))
             .with_context(|| "Find class line failed".to_string())?;
         let class = SetupAPI::get_string_field(&class_context, 1)
             .with_context(|| "Get class failed".to_string())?;
 
         // 查找DriverVer段
         let driver_ver_context =
-            SetupAPI::find_first_line(handle_inf, "Version", Some("DriverVer"))
+            SetupAPI::find_first_line(&handle_inf, "Version", Some("DriverVer"))
                 .with_context(|| "Find version line failed".to_string())?;
 
         // 解析Date字段
@@ -474,24 +479,23 @@ impl InfInfo {
         for key in SEARCH_KEYS {
             // 尝试获取该 Key 对应的字符串值
             if let Ok(filename_context) =
-                SetupAPI::find_first_line(handle_inf, "Version", Some(key))
+                SetupAPI::find_first_line(&handle_inf, "Version", Some(key))
+                && let Ok(filename) = SetupAPI::get_string_field(&filename_context, 1)
             {
-                if let Ok(filename) = SetupAPI::get_string_field(&filename_context, 1) {
-                    let catalog_file = inf_file.parent().unwrap().join(filename);
-                    if catalog_file.exists() {
-                        signature = if check_catalog_signature(&catalog_file) {
-                            // 检查是否包含 WHQL 签名
-                            if is_whql_signature(&catalog_file) {
-                                0x00
-                            } else {
-                                0x05
-                            }
+                let catalog_file = inf_file.parent().unwrap().join(filename);
+                if catalog_file.exists() {
+                    signature = if check_catalog_signature(&catalog_file) {
+                        // 检查是否包含 WHQL 签名
+                        if is_whql_signature(&catalog_file) {
+                            0x00
                         } else {
-                            0x0E
-                        };
-                    }
-                    break;
+                            0x05
+                        }
+                    } else {
+                        0x0E
+                    };
                 }
+                break;
             }
         }
 
@@ -500,7 +504,7 @@ impl InfInfo {
         let mut seen_sections = HashSet::new();
 
         // 遍历 [Manufacturer] 节
-        let mut manufacturer_context = SetupAPI::find_first_line(handle_inf, "Manufacturer", None)
+        let mut manufacturer_context = SetupAPI::find_first_line(&handle_inf, "Manufacturer", None)
             .with_context(|| "Find manufacturer line failed".to_string())?;
         loop {
             let field_count = SetupAPI::get_field_count(&manufacturer_context);
@@ -538,12 +542,12 @@ impl InfInfo {
         let mut hardware_entries: Vec<HardwareEntry> = Vec::new();
         for section_name in candidate_sections {
             // 尝试查找该节的第一行
-            let mut model_context = match SetupAPI::find_first_line(handle_inf, &section_name, None)
-            {
-                Ok(ctx) => ctx,
-                // 节不存在，跳过（这很正常，因为有些推导出来的后缀组合可能在 INF 里没写）
-                Err(_) => continue,
-            };
+            let mut model_context =
+                match SetupAPI::find_first_line(&handle_inf, &section_name, None) {
+                    Ok(ctx) => ctx,
+                    // 节不存在，跳过（这很正常，因为有些推导出来的后缀组合可能在 INF 里没写）
+                    Err(_) => continue,
+                };
 
             // 解析系统架构
             let (arch, os_version) = parse_section_metadata(&section_name);
@@ -559,7 +563,7 @@ impl InfInfo {
                     .unwrap_or_else(|_| "Unknown Install Section".to_string());
 
                 let feature_score =
-                    SetupAPI::find_first_line(handle_inf, &install_section, Some("FeatureScore"))
+                    SetupAPI::find_first_line(&handle_inf, &install_section, Some("FeatureScore"))
                         .ok()
                         .and_then(|ctx| SetupAPI::get_string_field(&ctx, 1).ok())
                         .map(|s| {
@@ -581,12 +585,11 @@ impl InfInfo {
                     let field_count = SetupAPI::get_field_count(&model_context);
                     if field_count > 2 {
                         for i in 3..=field_count {
-                            if let Ok(compat_id) = SetupAPI::get_string_field(&model_context, i) {
-                                if let Some(compat_id) = normalize_hardware_id(&compat_id)
-                                    && !compatible_id.contains(&compat_id)
-                                {
-                                    compatible_id.push(compat_id);
-                                }
+                            if let Ok(compat_id) = SetupAPI::get_string_field(&model_context, i)
+                                && let Some(compat_id) = normalize_hardware_id(&compat_id)
+                                && !compatible_id.contains(&compat_id)
+                            {
+                                compatible_id.push(compat_id);
                             }
                         }
                     }
@@ -611,8 +614,6 @@ impl InfInfo {
                 };
             }
         }
-
-        SetupAPI::close_inf_file(handle_inf);
 
         // 转换为相对路径
         let inf_path = inf_file
@@ -731,7 +732,10 @@ mod tests {
 
     #[test]
     fn normalizes_and_rejects_blank_hardware_ids() {
-        assert_eq!(normalize_hardware_id("  pci\\ven_1234  "), Some("PCI\\VEN_1234".into()));
+        assert_eq!(
+            normalize_hardware_id("  pci\\ven_1234  "),
+            Some("PCI\\VEN_1234".into())
+        );
         assert_eq!(normalize_hardware_id("  "), None);
     }
 

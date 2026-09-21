@@ -1,17 +1,17 @@
 use crate::command::check_if_bundled;
 use crate::driver_index::{DriverArch, DriverIndex, HardwareEntry, InfInfo};
-use crate::driver_match::{match_drivers, DriverLookup, MatchContext};
-use crate::hardware::{enumerate_hardware, update_driver_for_plug_and_play_devices, HardwareInfo};
-use crate::utils::console::{write_console, ConsoleType};
+use crate::driver_match::{DriverLookup, MatchContext, match_drivers};
+use crate::hardware::{HardwareInfo, enumerate_hardware, update_driver_for_plug_and_play_devices};
+use crate::utils::console::{ConsoleType, write_console};
 use crate::utils::setupapi::SetupAPI;
 use crate::utils::sevenzip::SevenZip;
 use crate::utils::utils::{find_offline_system, get_file_list, get_native_arch};
 use crate::{DEBUG, TEMP_PATH};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use rust_i18n::t;
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
 use std::path::Component;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -44,8 +44,10 @@ pub struct InstallOptions {
 
 #[derive(Default)]
 struct ExtractionCache {
-    entries: Mutex<HashMap<PathBuf, Arc<OnceLock<Result<(), String>>>>>,
+    entries: Mutex<HashMap<PathBuf, ExtractionState>>,
 }
+
+type ExtractionState = Arc<OnceLock<Result<(), String>>>;
 
 impl ExtractionCache {
     fn extract_once(
@@ -219,12 +221,8 @@ impl DriverInstaller {
             if DEBUG.load(Ordering::Relaxed) {
                 write_console(ConsoleType::Debug, "Match hardware info");
             }
-            let mut match_hardware_and_driver = driver_lookup.match_devices(
-                &hwid_list,
-                &match_context,
-                class,
-                exclude_class,
-            );
+            let mut match_hardware_and_driver =
+                driver_lookup.match_devices(&hwid_list, &match_context, class, exclude_class);
 
             // 由于存在多个设备匹配到同一个硬件ID的情况（但设备实例不同），而 UpdateDriverForPlugAndPlayDevices 需要提供硬件id而不是设备实例
             // 故需要去重（保留第一个出现的 HWID，删除后续相同的 HWID项目）
@@ -250,9 +248,7 @@ impl DriverInstaller {
             );
 
             // 创建线程池（池大小以可用 CPU 核心数为准）
-            let worker_count = num_cpus::get()
-                .min(match_hardware_and_driver.len())
-                .max(1);
+            let worker_count = num_cpus::get().min(match_hardware_and_driver.len()).max(1);
             let pool = ThreadPool::new(worker_count);
             let (tx, rx) = channel();
 
@@ -314,7 +310,8 @@ impl DriverInstaller {
                                     continue;
                                 }
                             };
-                            let extract_path = relative_inf.parent().unwrap_or_else(|| Path::new(""));
+                            let extract_path =
+                                relative_inf.parent().unwrap_or_else(|| Path::new(""));
 
                             if let Err(e) = extraction_cache.extract_once(
                                 &zip,
@@ -344,10 +341,8 @@ impl DriverInstaller {
 
                             // 仅解压驱动文件，返回成功
                             if only_extract {
-                                let _ = tx.send((
-                                    hardware,
-                                    Ok((inf_info_item.clone(), entry.clone())),
-                                ));
+                                let _ =
+                                    tx.send((hardware, Ok((inf_info_item.clone(), entry.clone()))));
                                 return;
                             }
 
@@ -393,7 +388,10 @@ impl DriverInstaller {
                                 if index == match_info.len() - 1 {
                                     let _ = tx.send((
                                         hardware,
-                                        Err(anyhow!("Driver file not found: {}", inf_path.display())),
+                                        Err(anyhow!(
+                                            "Driver file not found: {}",
+                                            inf_path.display()
+                                        )),
                                     ));
                                     return;
                                 }
@@ -652,9 +650,9 @@ impl DriverInstaller {
 
         // 解压全部 CAT 文件
         if driver_pack_path.is_file() {
-            let _ = self
-                .zip
-                .extract_files_from_path(driver_pack_path, password, "*.cat", extract_path);
+            let _ =
+                self.zip
+                    .extract_files_from_path(driver_pack_path, password, "*.cat", extract_path);
         }
 
         // 列出INF文件

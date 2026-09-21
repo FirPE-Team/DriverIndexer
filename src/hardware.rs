@@ -1,20 +1,20 @@
 use crate::utils::setupapi::SetupAPI;
 use anyhow::{Context, Result};
 use std::path::Path;
-use windows::core::{BOOL, GUID, HSTRING};
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
-    CM_Get_DevNode_Status, UpdateDriverForPlugAndPlayDevicesW, CM_DEVNODE_STATUS_FLAGS, CM_PROB,
-    CM_PROB_DISABLED, CM_PROB_FAILED_INSTALL, CM_PROB_NOT_CONFIGURED, CM_PROB_REINSTALL, CR_SUCCESS,
-    DN_HAS_PROBLEM, INSTALLFLAG_FORCE, UPDATEDRIVERFORPLUGANDPLAYDEVICES_FLAGS,
+    CM_DEVNODE_STATUS_FLAGS, CM_Get_DevNode_Status, CM_PROB, CM_PROB_DISABLED,
+    CM_PROB_FAILED_INSTALL, CM_PROB_NOT_CONFIGURED, CM_PROB_REINSTALL, CR_SUCCESS, DN_HAS_PROBLEM,
+    INSTALLFLAG_FORCE, UPDATEDRIVERFORPLUGANDPLAYDEVICES_FLAGS, UpdateDriverForPlugAndPlayDevicesW,
 };
+use windows::core::{BOOL, GUID, HSTRING};
 use windows::{
-    core::PCWSTR,
     Win32::Devices::DeviceAndDriverInstallation::{
-        SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInfo, SetupDiGetClassDevsW, SetupDiGetDeviceInstanceIdW, SetupDiGetDeviceRegistryPropertyW,
-        DIGCF_ALLCLASSES, DIGCF_PRESENT, HDEVINFO, SETUP_DI_REGISTRY_PROPERTY,
-        SPDRP_COMPATIBLEIDS, SPDRP_DEVICEDESC, SPDRP_FRIENDLYNAME,
-        SPDRP_HARDWAREID, SP_DEVINFO_DATA,
+        DIGCF_ALLCLASSES, DIGCF_PRESENT, HDEVINFO, SETUP_DI_REGISTRY_PROPERTY, SP_DEVINFO_DATA,
+        SPDRP_COMPATIBLEIDS, SPDRP_DEVICEDESC, SPDRP_FRIENDLYNAME, SPDRP_HARDWAREID,
+        SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInfo, SetupDiGetClassDevsW,
+        SetupDiGetDeviceInstanceIdW, SetupDiGetDeviceRegistryPropertyW,
     },
+    core::PCWSTR,
 };
 
 /// 硬件信息
@@ -317,8 +317,10 @@ fn get_device_property_string(
     if success.is_ok() {
         // 将字节转换为 u16 (UTF-16)
         let wchars: Vec<u16> = buffer
-            .chunks_exact(2)
-            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|chunk| u16::from_le_bytes(*chunk))
             .collect();
 
         // 转为 String 并移除末尾 null
@@ -387,8 +389,10 @@ fn get_device_property_string_list(
     if success.is_ok() {
         // 转换为 u16 slice
         let wchars: Vec<u16> = buffer
-            .chunks_exact(2)
-            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|chunk| u16::from_le_bytes(*chunk))
             .collect();
 
         // 解析 REG_MULTI_SZ

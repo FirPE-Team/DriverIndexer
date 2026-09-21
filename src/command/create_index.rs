@@ -1,16 +1,16 @@
-use crate::driver_index::{source_fingerprint, DriverIndex, InfInfo};
-use crate::utils::console::{write_console, ConsoleType};
+use crate::TEMP_PATH;
+use crate::driver_index::{DriverIndex, InfInfo, source_fingerprint};
+use crate::utils::console::{ConsoleType, write_console};
 use crate::utils::sevenzip::SevenZip;
 use crate::utils::utils::{get_file_crc32, get_file_list};
-use crate::TEMP_PATH;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use rust_i18n::t;
 use std::fs;
 
 use std::path::Path;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc::channel;
-use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 use threadpool::ThreadPool;
 use windows::Win32::Storage::FileSystem::{

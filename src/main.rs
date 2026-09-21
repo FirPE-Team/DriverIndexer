@@ -21,16 +21,15 @@ mod utils;
 
 use crate::cli::Cli;
 use crate::cli::Command;
-use crate::command::{check_if_bundled, DriverInstaller, InstallOptions};
+use crate::command::{DriverInstaller, InstallOptions, check_if_bundled};
 use crate::driver_index::DriverIndex;
 use crate::driver_manager::DriverManger;
-use crate::utils::console::{write_console, ConsoleType};
+use crate::utils::console::{ConsoleType, write_console};
 use crate::utils::setupapi::SetupAPI;
 use crate::utils::utils::{
-    decrypt_password, encrypt_password, get_file_list, get_temp_name,
-    launched_from_explorer,
+    decrypt_password, encrypt_password, get_file_list, get_temp_name, launched_from_explorer,
 };
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use clap::Parser;
 use dotenvy_macro::dotenv;
 use remove_dir_all::remove_dir_all;
@@ -39,8 +38,8 @@ use rust_i18n::{set_locale, t};
 use std::env::temp_dir;
 use std::fs::create_dir_all;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::sleep;
 use std::time::Duration;
 use std::{env, process};
@@ -215,7 +214,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                     Err(e) => {
                         write_console(
                             ConsoleType::Error,
-                            &format!("{}: {}", &t!("decrypt-password-failed"), e),
+                            &format!("{}: {}", t!("decrypt-password-failed"), e),
                         );
                         process::exit(exitcode::DATAERR);
                     }
@@ -282,7 +281,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                             ConsoleType::Info,
                             &format!(
                                 "{}: {}",
-                                &t!("create-index-info"),
+                                t!("create-index-info"),
                                 driver_path_item.to_string_lossy()
                             ),
                         );
@@ -428,7 +427,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                     Err(e) => {
                         write_console(
                             ConsoleType::Error,
-                            &format!("{}: {}", &t!("decrypt-password-failed"), e),
+                            &format!("{}: {}", t!("decrypt-password-failed"), e),
                         );
                         process::exit(exitcode::DATAERR);
                     }
@@ -488,7 +487,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                             ConsoleType::Info,
                             &format!(
                                 "{}: {}",
-                                &t!("driver-install-info"),
+                                t!("driver-install-info"),
                                 drive_path_item.to_string_lossy()
                             ),
                         );
@@ -519,7 +518,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 ConsoleType::Info,
                 &format!(
                     "{}: {}",
-                    &t!("driver-install-info"),
+                    t!("driver-install-info"),
                     driver_path.to_string_lossy()
                 ),
             );
@@ -606,7 +605,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                     Err(e) => {
                         write_console(
                             ConsoleType::Error,
-                            &format!("{}: {}", &t!("decrypt-password-failed"), e),
+                            &format!("{}: {}", t!("decrypt-password-failed"), e),
                         );
                         process::exit(exitcode::DATAERR);
                     }
@@ -640,7 +639,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                     for item in drive_list {
                         write_console(
                             ConsoleType::Info,
-                            &format!("{}: {}", &t!("driver-import-info"), item.to_string_lossy()),
+                            &format!("{}: {}", t!("driver-import-info"), item.to_string_lossy()),
                         );
 
                         match driver_manger.import_driver(
@@ -674,7 +673,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 ConsoleType::Info,
                 &format!(
                     "{}: {}",
-                    &t!("driver-import-info"),
+                    t!("driver-import-info"),
                     drive_path.to_string_lossy()
                 ),
             );

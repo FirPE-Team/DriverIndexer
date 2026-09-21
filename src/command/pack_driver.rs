@@ -1,9 +1,9 @@
+use crate::TEMP_PATH;
 use crate::command::create_index::create_index;
 use crate::utils::sevenzip::SevenZip;
-use crate::TEMP_PATH;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use bincode::error::{DecodeError, EncodeError};
-use bincode::{config, Decode, Encode};
+use bincode::{Decode, Encode, config};
 use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};

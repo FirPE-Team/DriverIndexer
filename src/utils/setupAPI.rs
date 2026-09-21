@@ -1,21 +1,30 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::ffi::c_void;
 use std::path::Path;
-use windows::core::{GUID, HSTRING, PCWSTR};
 use windows::Win32::Devices::DeviceAndDriverInstallation::{
-    CM_Locate_DevNodeW, CM_Reenumerate_DevNode, SetupCloseInfFile, SetupDiClassGuidsFromNameExW,
+    CM_LOCATE_DEVNODE_NORMAL, CM_Locate_DevNodeW, CM_Reenumerate_DevNode, CONFIGRET,
+    INF_STYLE_WIN4, INFCONTEXT, SetupCloseInfFile, SetupDiClassGuidsFromNameExW,
     SetupDiGetClassDescriptionW, SetupFindFirstLineW, SetupFindNextLine, SetupGetFieldCount,
-    SetupGetStringFieldW, SetupOpenInfFileW, CM_LOCATE_DEVNODE_NORMAL, CONFIGRET,
-    INFCONTEXT, INF_STYLE_WIN4,
+    SetupGetStringFieldW, SetupOpenInfFileW,
 };
 use windows::Win32::Foundation::{GetLastError, INVALID_HANDLE_VALUE};
 use windows::Win32::System::Com::CLSIDFromString;
+use windows::core::{GUID, HSTRING, PCWSTR};
 
 /// 封装Windows SetupAPI函数
 ///
 /// # 参考
 /// [Windows SetupAPI文档](https://learn.microsoft.com/zh-cn/windows/win32/api/setupapi/)
 pub struct SetupAPI {}
+
+/// Owned SetupAPI INF handle. Closing is guaranteed on every return path.
+pub struct InfHandle(*mut c_void);
+
+impl Drop for InfHandle {
+    fn drop(&mut self) {
+        unsafe { SetupCloseInfFile(self.0) };
+    }
+}
 
 impl SetupAPI {
     /// 扫描检测硬件改动 [参考资料](https://www.shuzhiduo.com/A/D854GRg3JE)
@@ -140,7 +149,7 @@ impl SetupAPI {
     ///
     /// # 返回值
     /// - `*mut c_void`: 成功返回inf文件句柄，失败返回`null_mut()`
-    pub fn open_inf_file(inf_path: &Path) -> Result<*mut c_void> {
+    pub fn open_inf_file(inf_path: &Path) -> Result<InfHandle> {
         let inf_hstring = HSTRING::from(inf_path);
         unsafe {
             let handle =
@@ -149,17 +158,7 @@ impl SetupAPI {
                 return Err(anyhow!("SetupOpenInfFileW failed: {:?}", GetLastError()));
             }
 
-            Ok(handle)
-        }
-    }
-
-    /// 关闭inf文件
-    ///
-    /// # 参数
-    /// - `inf_handle(*mut c_void)`: inf 文件句柄
-    pub fn close_inf_file(inf_handle: *mut c_void) {
-        unsafe {
-            SetupCloseInfFile(inf_handle);
+            Ok(InfHandle(handle))
         }
     }
 
@@ -173,7 +172,7 @@ impl SetupAPI {
     /// # 返回值
     /// - `Ok(INFCONTEXT)`: 成功返回INFCONTEXT结构体，失败返回错误信息
     pub fn find_first_line(
-        inf_handle: *mut c_void,
+        inf_handle: &InfHandle,
         section: &str,
         key: Option<&str>,
     ) -> Result<INFCONTEXT> {
@@ -192,7 +191,7 @@ impl SetupAPI {
         let mut context = INFCONTEXT::default();
         unsafe {
             SetupFindFirstLineW(
-                inf_handle,
+                inf_handle.0,
                 PCWSTR(section_wide.as_ptr()),
                 key_wide,
                 &mut context,

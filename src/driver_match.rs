@@ -1,4 +1,4 @@
-use crate::driver_index::{normalize_hardware_id, DriverArch, HardwareEntry, InfInfo};
+use crate::driver_index::{DriverArch, HardwareEntry, InfInfo, normalize_hardware_id};
 use crate::hardware::HardwareInfo;
 use crate::utils::utils::compare_version;
 use std::cmp::Ordering;
@@ -81,9 +81,8 @@ impl<'a> DriverLookup<'a> {
         class_filter: Option<&[String]>,
         class_exclude: Option<&[String]>,
     ) -> Vec<(&'d HardwareInfo, Vec<DriverMatch<'a>>)> {
-        let explicit_supplemental = class_filter.is_some_and(|classes| {
-            classes.iter().any(|class| is_supplemental_class(class))
-        });
+        let explicit_supplemental = class_filter
+            .is_some_and(|classes| classes.iter().any(|class| is_supplemental_class(class)));
         let mut results = Vec::new();
 
         for device in devices {
@@ -147,12 +146,7 @@ pub fn match_drivers<'a>(
     class_filter: Option<&[String]>,
     class_exclude: Option<&[String]>,
 ) -> Vec<(&'a HardwareInfo, Vec<DriverMatch<'a>>)> {
-    DriverLookup::new(drivers).match_devices(
-        devices,
-        context,
-        class_filter,
-        class_exclude,
-    )
+    DriverLookup::new(drivers).match_devices(devices, context, class_filter, class_exclude)
 }
 
 fn class_allowed(
@@ -240,8 +234,7 @@ fn compare_candidates(a: &DriverMatch<'_>, b: &DriverMatch<'_>) -> Ordering {
 }
 
 fn is_supplemental_class(class: &str) -> bool {
-    class.eq_ignore_ascii_case("Extension")
-        || class.eq_ignore_ascii_case("SoftwareComponent")
+    class.eq_ignore_ascii_case("Extension") || class.eq_ignore_ascii_case("SoftwareComponent")
 }
 
 #[cfg(test)]
@@ -253,13 +246,11 @@ mod tests {
             device_instance_path: "PCI\\INSTANCE".into(),
             name: "Test device".into(),
             hardware_id: hwids.iter().map(|value| (*value).into()).collect(),
-            compatible_id: compatible_ids
-                .iter()
-                .map(|value| (*value).into())
-                .collect(),
+            compatible_id: compatible_ids.iter().map(|value| (*value).into()).collect(),
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn driver(
         path: &str,
         class: &str,
@@ -281,10 +272,7 @@ mod tests {
                 arch: DriverArch::NTamd64,
                 min_os_version: "10.0".into(),
                 hardware_id: hwid.into(),
-                compatible_ids: compatible_ids
-                    .iter()
-                    .map(|value| (*value).into())
-                    .collect(),
+                compatible_ids: compatible_ids.iter().map(|value| (*value).into()).collect(),
                 feature_score,
             }],
         }
@@ -312,12 +300,30 @@ mod tests {
             ),
             (
                 device(&["PCI\\ID"], &[]),
-                driver("a.inf", "Net", 0, 0, "PCI\\HW", &["PCI\\ID"], "2024-01-01", "1"),
+                driver(
+                    "a.inf",
+                    "Net",
+                    0,
+                    0,
+                    "PCI\\HW",
+                    &["PCI\\ID"],
+                    "2024-01-01",
+                    "1",
+                ),
                 MatchType::HardwareToCompatible,
             ),
             (
                 device(&[], &["PCI\\ID"]),
-                driver("a.inf", "Net", 0, 0, "PCI\\HW", &["PCI\\ID"], "2024-01-01", "1"),
+                driver(
+                    "a.inf",
+                    "Net",
+                    0,
+                    0,
+                    "PCI\\HW",
+                    &["PCI\\ID"],
+                    "2024-01-01",
+                    "1",
+                ),
                 MatchType::CompatibleToCompatible,
             ),
         ];
@@ -334,8 +340,26 @@ mod tests {
         let device = device(&["PCI\\ID"], &[]);
         let drivers = vec![
             driver("signed.inf", "Net", 5, 0, "PCI\\ID", &[], "2024-01-01", "1"),
-            driver("whql.inf", "Net", 0, 0xff, "PCI\\ID", &[], "2024-01-01", "1"),
-            driver("feature.inf", "Net", 0, 1, "PCI\\ID", &[], "2024-01-01", "1"),
+            driver(
+                "whql.inf",
+                "Net",
+                0,
+                0xff,
+                "PCI\\ID",
+                &[],
+                "2024-01-01",
+                "1",
+            ),
+            driver(
+                "feature.inf",
+                "Net",
+                0,
+                1,
+                "PCI\\ID",
+                &[],
+                "2024-01-01",
+                "1",
+            ),
         ];
         let devices = [device];
         let matches = match_drivers(&devices, &drivers, &context(), None, None);
@@ -348,13 +372,44 @@ mod tests {
     fn rank_compares_versions_numerically_and_paths_stably() {
         let device = device(&["PCI\\ID"], &[]);
         let drivers = vec![
-            driver("z.inf", "Net", 0, 0, "PCI\\ID", &[], "2024-01-01", "1.0.9.0"),
-            driver("b.inf", "Net", 0, 0, "PCI\\ID", &[], "2024-01-01", "1.0.10.0"),
-            driver("a.inf", "Net", 0, 0, "PCI\\ID", &[], "2024-01-01", "1.0.10.0"),
+            driver(
+                "z.inf",
+                "Net",
+                0,
+                0,
+                "PCI\\ID",
+                &[],
+                "2024-01-01",
+                "1.0.9.0",
+            ),
+            driver(
+                "b.inf",
+                "Net",
+                0,
+                0,
+                "PCI\\ID",
+                &[],
+                "2024-01-01",
+                "1.0.10.0",
+            ),
+            driver(
+                "a.inf",
+                "Net",
+                0,
+                0,
+                "PCI\\ID",
+                &[],
+                "2024-01-01",
+                "1.0.10.0",
+            ),
         ];
         let devices = [device];
         let matches = match_drivers(&devices, &drivers, &context(), None, None);
-        let paths: Vec<_> = matches[0].1.iter().map(|item| item.inf.path.as_str()).collect();
+        let paths: Vec<_> = matches[0]
+            .1
+            .iter()
+            .map(|item| item.inf.path.as_str())
+            .collect();
         assert_eq!(paths, ["a.inf", "b.inf", "z.inf"]);
     }
 
@@ -365,7 +420,16 @@ mod tests {
         wrong_arch.hardware[0].arch = DriverArch::NTx86;
         let mut future = driver("future.inf", "Net", 0, 0, "PCI\\ID", &[], "2024-01-01", "1");
         future.hardware[0].min_os_version = "11.0".into();
-        let allowed = driver("allowed.inf", "Net", 0, 0, "PCI\\ID", &[], "2024-01-01", "1");
+        let allowed = driver(
+            "allowed.inf",
+            "Net",
+            0,
+            0,
+            "PCI\\ID",
+            &[],
+            "2024-01-01",
+            "1",
+        );
         let drivers = vec![wrong_arch, future, allowed];
         let classes = vec!["Net".to_string()];
         let devices = [device];
@@ -378,7 +442,16 @@ mod tests {
     fn supplemental_driver_is_a_fallback_unless_explicit() {
         let device = device(&["PCI\\ID"], &[]);
         let drivers = vec![
-            driver("extension.inf", "Extension", 0, 0, "PCI\\ID", &[], "2024-01-01", "1"),
+            driver(
+                "extension.inf",
+                "Extension",
+                0,
+                0,
+                "PCI\\ID",
+                &[],
+                "2024-01-01",
+                "1",
+            ),
             driver("base.inf", "Net", 5, 0, "PCI\\ID", &[], "2024-01-01", "1"),
         ];
         let base_devices = [device.clone()];
@@ -388,7 +461,13 @@ mod tests {
 
         let classes = vec!["Extension".to_string()];
         let extension_devices = [device];
-        let matches = match_drivers(&extension_devices, &drivers, &context(), Some(&classes), None);
+        let matches = match_drivers(
+            &extension_devices,
+            &drivers,
+            &context(),
+            Some(&classes),
+            None,
+        );
         assert_eq!(matches[0].1[0].inf.path, "extension.inf");
     }
 
@@ -396,8 +475,26 @@ mod tests {
     fn normalizes_ids_and_prefers_earlier_device_position() {
         let device = device(&[" pci\\first ", "pci\\second"], &[]);
         let drivers = vec![
-            driver("second.inf", "Net", 0, 0, "PCI\\SECOND", &[], "2024-01-01", "1"),
-            driver("first.inf", "Net", 0, 0, "PCI\\FIRST", &[], "2024-01-01", "1"),
+            driver(
+                "second.inf",
+                "Net",
+                0,
+                0,
+                "PCI\\SECOND",
+                &[],
+                "2024-01-01",
+                "1",
+            ),
+            driver(
+                "first.inf",
+                "Net",
+                0,
+                0,
+                "PCI\\FIRST",
+                &[],
+                "2024-01-01",
+                "1",
+            ),
         ];
         let devices = [device];
         let matches = match_drivers(&devices, &drivers, &context(), None, None);
@@ -408,10 +505,17 @@ mod tests {
     #[test]
     fn class_exclusion_removes_otherwise_matching_driver() {
         let devices = [device(&["PCI\\ID"], &[])];
-        let drivers = [driver("net.inf", "Net", 0, 0, "PCI\\ID", &[], "2024-01-01", "1")];
+        let drivers = [driver(
+            "net.inf",
+            "Net",
+            0,
+            0,
+            "PCI\\ID",
+            &[],
+            "2024-01-01",
+            "1",
+        )];
         let excluded = vec!["net".to_string()];
-        assert!(
-            match_drivers(&devices, &drivers, &context(), None, Some(&excluded)).is_empty()
-        );
+        assert!(match_drivers(&devices, &drivers, &context(), None, Some(&excluded)).is_empty());
     }
 }

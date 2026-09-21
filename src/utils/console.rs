@@ -1,5 +1,5 @@
-use crate::utils::utils::write_log;
 use crate::LOG_PATH;
+use crate::utils::utils::write_log;
 use console::style;
 use rust_i18n::t;
 use std::cmp::PartialEq;
@@ -36,9 +36,9 @@ pub fn write_console(consoleType: ConsoleType, message: &str) {
     };
 
     if consoleType == ConsoleType::Error {
-        eprintln!("  {}      {}", &title, message);
+        eprintln!("  {}      {}", title, message);
     } else {
-        println!("  {}      {}", &title, message);
+        println!("  {}      {}", title, message);
     }
 
     // 写入日志文件

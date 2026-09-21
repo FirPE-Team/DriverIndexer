@@ -1,6 +1,6 @@
 use crate::driver_index::InfInfo;
 use crate::hardware::enumerate_hardware;
-use crate::utils::console::{write_console, ConsoleType};
+use crate::utils::console::{ConsoleType, write_console};
 use crate::utils::drvstore::DriverStore;
 use crate::utils::setupapi::SetupAPI;
 use crate::utils::sevenzip::SevenZip;
@@ -8,9 +8,9 @@ use crate::utils::utils::{
     copy_dir, filetime_to_string, get_current_system_root, get_file_list, get_file_version,
     get_offline_system_arch, is_offline_system,
 };
-use crate::{command, DEBUG, TEMP_PATH};
+use crate::{DEBUG, TEMP_PATH, command};
 use anyhow::Result;
-use anyhow::{anyhow, Context};
+use anyhow::{Context, anyhow};
 use rust_i18n::t;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
@@ -487,7 +487,7 @@ impl DriverManger {
                             ConsoleType::Success,
                             &format!(
                                 "{}: {}",
-                                &t!("driver-import-success"),
+                                t!("driver-import-success"),
                                 inf_path.to_string_lossy(),
                             ),
                         );
@@ -498,7 +498,7 @@ impl DriverManger {
                             ConsoleType::Error,
                             &format!(
                                 "{}: {} ({})",
-                                &t!("driver-import-failed"),
+                                t!("driver-import-failed"),
                                 inf_path.to_string_lossy(),
                                 e,
                             ),
@@ -528,7 +528,7 @@ impl DriverManger {
                             ConsoleType::Success,
                             &format!(
                                 "{}: {}",
-                                &t!("driver-import-success"),
+                                t!("driver-import-success"),
                                 inf_path.to_string_lossy(),
                             ),
                         );
@@ -539,7 +539,7 @@ impl DriverManger {
                             ConsoleType::Error,
                             &format!(
                                 "{}: {} ({})",
-                                &t!("driver-import-failed"),
+                                t!("driver-import-failed"),
                                 inf_path.to_string_lossy(),
                                 e,
                             ),
@@ -565,6 +565,7 @@ impl DriverManger {
     /// # 返回值
     /// - `Ok(())`: 导出成功
     /// - `Err()`: 导出失败
+    #[allow(clippy::too_many_arguments)]
     pub fn export_driver(
         &self,
         system_drive: &Path,
@@ -782,6 +783,7 @@ impl DriverManger {
     /// - `exclude_class`: 排除的驱动程序类名，可选，用于筛选出不包含指定类别的驱动程序
     /// - `provider`: 驱动程序供应商名，可选，用于筛选出指定供应商的驱动程序
     ///  - `all`: 是否删除所有驱动（可选，默认false）
+    #[allow(clippy::too_many_arguments)]
     pub fn remove_driver(
         &self,
         system_drive: &Path,
@@ -911,7 +913,7 @@ impl DriverManger {
                                 ConsoleType::Success,
                                 &format!(
                                     "{}: {}",
-                                    &t!("driver-remove-success"),
+                                    t!("driver-remove-success"),
                                     inf_path.file_name().unwrap().to_string_lossy()
                                 ),
                             );
@@ -920,7 +922,7 @@ impl DriverManger {
                             fail_count += 1;
                             write_console(
                                 ConsoleType::Error,
-                                &format!("{}: {}", &t!("driver-remove-failed"), inf_path.display()),
+                                &format!("{}: {}", t!("driver-remove-failed"), inf_path.display()),
                             );
                         }
                     }
@@ -935,18 +937,14 @@ impl DriverManger {
                             success_count += 1;
                             write_console(
                                 ConsoleType::Success,
-                                &format!(
-                                    "{}: {}",
-                                    &t!("driver-remove-success"),
-                                    inf_path.display()
-                                ),
+                                &format!("{}: {}", t!("driver-remove-success"), inf_path.display()),
                             );
                         }
                         Err(_) => {
                             fail_count += 1;
                             write_console(
                                 ConsoleType::Error,
-                                &format!("{}: {}", &t!("driver-remove-failed"), inf_path.display()),
+                                &format!("{}: {}", t!("driver-remove-failed"), inf_path.display()),
                             );
                         }
                     }
