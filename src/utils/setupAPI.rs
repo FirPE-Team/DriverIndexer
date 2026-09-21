@@ -222,13 +222,23 @@ impl SetupAPI {
     /// # 返回值
     /// - `Ok(String)`: 成功返回字段值，失败返回错误信息
     pub fn get_string_field(context: &INFCONTEXT, field_index: u32) -> Result<String> {
-        let mut buf: [u16; 256] = [0; 256];
-        let mut needed: u32 = 0;
-        unsafe {
-            SetupGetStringFieldW(context, field_index, Some(&mut buf), Some(&mut needed))?;
+        let mut capacity = 256usize;
+        loop {
+            let mut buf = vec![0u16; capacity];
+            let mut needed = 0u32;
+            match unsafe {
+                SetupGetStringFieldW(context, field_index, Some(&mut buf), Some(&mut needed))
+            } {
+                Ok(()) => {
+                    let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+                    return Ok(String::from_utf16_lossy(&buf[..len]));
+                }
+                Err(_error) if needed as usize >= capacity => {
+                    capacity = needed as usize + 1;
+                }
+                Err(error) => return Err(error.into()),
+            }
         }
-        let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-        Ok(String::from_utf16_lossy(&buf[..len]))
     }
 
     /// 查找inf文件中的下一行
