@@ -62,19 +62,23 @@ Written in `Rust` language, it calls Windows API to obtain hardware information 
 
 1. Match current system architecture
 2. Match current operating system version
-3. Match hardware information
+3. Normalize PnP identifiers and query candidates through an inverted index
 
-    - Device hardware ID vs driver file hardware ID
-    - Device hardware ID vs driver file compatible ID
-    - Device compatible ID vs driver file hardware ID
-    - Device compatible ID vs driver file compatible ID
+    - Device hardware ID vs INF hardware ID
+    - Device compatible ID vs INF hardware ID
+    - Device hardware ID vs INF compatible ID
+    - Device compatible ID vs INF compatible ID
 
 ### Driver Sorting Rules
 
-1. Signature status (Microsoft signature > Other signatures > Unsigned)
-2. Match score (strongest first)
-3. Driver date (newest first)
-4. Driver version (newest first)
+1. Signature status (WHQL > valid signature > invalid signature > unsigned)
+2. `FeatureScore` (lower is better; a missing value is `0xFF`)
+3. Identifier match type and the device/INF identifier positions
+4. Driver date (newest first)
+5. Numeric driver version (newest first)
+6. Relative INF path for deterministic tie-breaking
+
+`Extension` and `SoftwareComponent` drivers are fallback candidates when no base driver matches. They can be selected directly by explicitly naming the class with `--class`. Debug mode prints the structured rank for each candidate.
 
 ## Usage Instructions
 
@@ -85,8 +89,9 @@ Note: Please run the terminal with **administrator privileges**.
 
 ### Create Driver Index File
 
-Index files are usually created when using a driver package for the first time. If the driver package content changes
-later, you need to rebuild the index.
+Index files are usually created when using a driver package for the first time. If the driver package content changes,
+you need to rebuild the index. The current v2 format stores the matching-policy version and a SHA-256 fingerprint of
+the source package or directory manifest. Older index files are incompatible and must be regenerated with `index`.
 
 `DriverIndexer.exe index <driver package/directory path> <index file save path>`
 
@@ -109,12 +114,13 @@ Use index files or directly specify driver package paths for installation.
 
 - Driver path formats: compressed packages (limited to formats supported by 7zip), directory formats.
 - Supports wildcards (`*`, `?`) for matching multiple driver packages.
-- Temporary indexes will be automatically created when not using indexes
+- A temporary index is created when no index is supplied; an invalid auto-discovered index is rebuilt automatically.
+- An obsolete or invalid explicitly supplied index is rejected instead of being used silently.
 
 - Options
 
   | **Parameter**                | **Short Parameter** | **Description**                                                                                                                      |
-      |------------------------------|---------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+  |------------------------------|---------------------|--------------------------------------------------------------------------------------------------------------------------------------|
   | `--index-path <path>`        | `-i`                | Specify index file path for faster installation. If not specified, a temporary index will be automatically created.                  |
   | `--password <password>`      | `-p`                | Specify driver package password for extracting the driver package.                                                                   |
   | `--class <class>`            | `-c`                | **Include** the specified driver class, only install drivers matching the class. Multiple classes can be specified repeatedly.       |
