@@ -16,6 +16,12 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 
+/// Normalize a Plug and Play identifier for case-insensitive matching.
+pub fn normalize_hardware_id(id: &str) -> Option<String> {
+    let normalized = id.trim().to_ascii_uppercase();
+    (!normalized.is_empty()).then_some(normalized)
+}
+
 /// 驱动索引
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Encode, Decode)]
 pub struct DriverIndex {
@@ -417,6 +423,7 @@ impl InfInfo {
 
         // 用于存储推导出的所有目标节名 (例如 [Realtek], [Realtek.NTamd64])
         let mut candidate_sections: Vec<String> = Vec::new();
+        let mut seen_sections = HashSet::new();
 
         // 遍历 [Manufacturer] 节
         let mut manufacturer_context = SetupAPI::find_first_line(handle_inf, "Manufacturer", None)
@@ -425,7 +432,9 @@ impl InfInfo {
             let field_count = SetupAPI::get_field_count(&manufacturer_context);
             if let Ok(base_name) = SetupAPI::get_string_field(&manufacturer_context, 1) {
                 // 添加基础节 (例如 "Realtek")
-                candidate_sections.push(base_name.clone());
+                if seen_sections.insert(base_name.to_ascii_lowercase()) {
+                    candidate_sections.push(base_name.clone());
+                }
 
                 // 步骤 2: 遍历后续字段 (从 Field 2 开始) 进行拼接
                 // 如果 field_count 是 1，这里范围是 2..=1 (为空)，循环不会执行，逻辑正确兼容
@@ -435,7 +444,9 @@ impl InfInfo {
                         if let Ok(suffix) = SetupAPI::get_string_field(&manufacturer_context, i) {
                             // 添加组合节 (例如 "Realtek.NTamd64")
                             let full_section_name = format!("{}.{}", base_name, suffix);
-                            candidate_sections.push(full_section_name);
+                            if seen_sections.insert(full_section_name.to_ascii_lowercase()) {
+                                candidate_sections.push(full_section_name);
+                            }
                         }
                     }
                 }
@@ -487,7 +498,9 @@ impl InfInfo {
 
                 // Field 2: Main Hardware ID (如 "PCI\VEN_10EC&DEV_8168&SUBSYS_00008168&REV_00")
                 if let Ok(hw_id) = SetupAPI::get_string_field(&model_context, 2) {
-                    let hardware_id = hw_id.to_uppercase();
+                    let Some(hardware_id) = normalize_hardware_id(&hw_id) else {
+                        continue;
+                    };
 
                     // 获取Compatible IDs(Field 3, Field 4...)
                     let mut compatible_id: Vec<String> = Vec::new();
@@ -495,7 +508,11 @@ impl InfInfo {
                     if field_count > 2 {
                         for i in 3..=field_count {
                             if let Ok(compat_id) = SetupAPI::get_string_field(&model_context, i) {
-                                compatible_id.push(compat_id.to_uppercase());
+                                if let Some(compat_id) = normalize_hardware_id(&compat_id)
+                                    && !compatible_id.contains(&compat_id)
+                                {
+                                    compatible_id.push(compat_id);
+                                }
                             }
                         }
                     }
@@ -529,7 +546,7 @@ impl InfInfo {
             .with_context(|| "Strip inf path prefix failed")?;
 
         Ok(InfInfo {
-            path: inf_path.to_string_lossy().to_string(),
+            path: inf_path.to_string_lossy().replace('\\', "/"),
             class,
             date,
             version,
