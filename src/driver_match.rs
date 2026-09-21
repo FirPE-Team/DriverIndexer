@@ -179,7 +179,7 @@ fn calculate_rank(
     inf: &InfInfo,
     entry: &HardwareEntry,
 ) -> Option<MatchRank> {
-    let inf_hardware_id = normalize_hardware_id(&entry.hardware_id)?;
+    let inf_hardware_id = normalize_hardware_id(&entry.hardware_id);
     let inf_compatible_ids: Vec<String> = entry
         .compatible_ids
         .iter()
@@ -202,7 +202,9 @@ fn calculate_rank(
                 continue;
             };
             let inf_position = if match_hardware {
-                (device_id == inf_hardware_id).then_some(0)
+                inf_hardware_id
+                    .as_ref()
+                    .and_then(|inf_id| (&device_id == inf_id).then_some(0))
             } else {
                 inf_compatible_ids.iter().position(|id| id == &device_id)
             };
@@ -333,6 +335,27 @@ mod tests {
             let matches = match_drivers(&devices, &drivers, &context(), None, None);
             assert_eq!(matches[0].1[0].rank.match_type, expected);
         }
+    }
+
+    #[test]
+    fn matches_inf_entries_with_only_compatible_ids() {
+        let devices = [device(&["HID\\VID_05AC&PID_0217"], &[])];
+        let drivers = [driver(
+            "apple.inf",
+            "Mouse",
+            0,
+            0xff,
+            "",
+            &["HID\\VID_05AC&PID_0217"],
+            "2009-07-13",
+            "3.0.0.1",
+        )];
+
+        let matches = match_drivers(&devices, &drivers, &context(), None, None);
+        assert_eq!(
+            matches[0].1[0].rank.match_type,
+            MatchType::HardwareToCompatible
+        );
     }
 
     #[test]

@@ -27,6 +27,42 @@ pub fn normalize_hardware_id(id: &str) -> Option<String> {
     (!normalized.is_empty()).then_some(normalized)
 }
 
+fn build_hardware_entry(
+    desc: String,
+    arch: DriverArch,
+    min_os_version: String,
+    feature_score: u8,
+    hardware_id: Option<String>,
+    compatible_ids: Vec<String>,
+) -> Option<HardwareEntry> {
+    let hardware_id = hardware_id
+        .as_deref()
+        .and_then(normalize_hardware_id)
+        .unwrap_or_default();
+    let mut normalized_compatible_ids = Vec::new();
+    for compatible_id in compatible_ids {
+        if let Some(compatible_id) = normalize_hardware_id(&compatible_id)
+            && compatible_id != hardware_id
+            && !normalized_compatible_ids.contains(&compatible_id)
+        {
+            normalized_compatible_ids.push(compatible_id);
+        }
+    }
+
+    if hardware_id.is_empty() && normalized_compatible_ids.is_empty() {
+        return None;
+    }
+
+    Some(HardwareEntry {
+        desc,
+        arch,
+        min_os_version,
+        hardware_id,
+        compatible_ids: normalized_compatible_ids,
+        feature_score,
+    })
+}
+
 /// 驱动索引
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Encode, Decode)]
 pub struct DriverIndex {
@@ -576,35 +612,27 @@ impl InfInfo {
                 let feature_score =
                     parse_feature_score(&handle_inf, &install_section, &arch, &os_version);
 
-                // Field 2: Main Hardware ID (如 "PCI\VEN_10EC&DEV_8168&SUBSYS_00008168&REV_00")
-                if let Ok(hw_id) = SetupAPI::get_string_field(&model_context, 2) {
-                    let Some(hardware_id) = normalize_hardware_id(&hw_id) else {
-                        continue;
-                    };
+                // Field 2 is the main hardware ID. Some legacy INFs leave it blank and
+                // provide only compatible IDs from Field 3 onward.
+                let hardware_id = SetupAPI::get_string_field(&model_context, 2).ok();
+                let field_count = SetupAPI::get_field_count(&model_context);
+                let compatible_ids = if field_count > 2 {
+                    (3..=field_count)
+                        .filter_map(|field| SetupAPI::get_string_field(&model_context, field).ok())
+                        .collect()
+                } else {
+                    Vec::new()
+                };
 
-                    // 获取Compatible IDs(Field 3, Field 4...)
-                    let mut compatible_id: Vec<String> = Vec::new();
-                    let field_count = SetupAPI::get_field_count(&model_context);
-                    if field_count > 2 {
-                        for i in 3..=field_count {
-                            if let Ok(compat_id) = SetupAPI::get_string_field(&model_context, i)
-                                && let Some(compat_id) = normalize_hardware_id(&compat_id)
-                                && !compatible_id.contains(&compat_id)
-                            {
-                                compatible_id.push(compat_id);
-                            }
-                        }
-                    }
-
-                    // 构建 Entry
-                    hardware_entries.push(HardwareEntry {
-                        desc: name.clone(),
-                        arch: arch.clone(),
-                        min_os_version: os_version.clone(),
-                        hardware_id: hardware_id.clone(),
-                        compatible_ids: compatible_id.clone(),
-                        feature_score,
-                    });
+                if let Some(entry) = build_hardware_entry(
+                    name,
+                    arch.clone(),
+                    os_version.clone(),
+                    feature_score,
+                    hardware_id,
+                    compatible_ids,
+                ) {
+                    hardware_entries.push(entry);
                 }
 
                 // 移动到下一行
@@ -774,6 +802,25 @@ mod tests {
             Some("PCI\\VEN_1234".into())
         );
         assert_eq!(normalize_hardware_id("  "), None);
+    }
+
+    #[test]
+    fn keeps_compatible_ids_when_model_hardware_id_is_blank() {
+        let entry = build_hardware_entry(
+            "Apple Trackpad".into(),
+            DriverArch::NTamd64,
+            String::new(),
+            0xff,
+            Some("  ".into()),
+            vec![
+                " hid\\vid_05ac&pid_0217 ".into(),
+                "HID\\VID_05AC&PID_0217".into(),
+            ],
+        )
+        .unwrap();
+
+        assert!(entry.hardware_id.is_empty());
+        assert_eq!(entry.compatible_ids, ["HID\\VID_05AC&PID_0217"]);
     }
 
     #[test]
