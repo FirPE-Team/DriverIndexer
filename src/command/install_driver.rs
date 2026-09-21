@@ -11,6 +11,7 @@ use anyhow::{anyhow, Context, Result};
 use rust_i18n::t;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::path::Component;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -227,13 +228,14 @@ impl DriverInstaller {
 
             // 由于存在多个设备匹配到同一个硬件ID的情况（但设备实例不同），而 UpdateDriverForPlugAndPlayDevices 需要提供硬件id而不是设备实例
             // 故需要去重（保留第一个出现的 HWID，删除后续相同的 HWID项目）
-            let mut seen_hwids = HashSet::new();
+            let mut seen_devices = HashSet::new();
             match_hardware_and_driver.retain(|(device, _)| {
-                if let Some(primary_hwid) = device.hardware_id.first() {
-                    seen_hwids.insert(primary_hwid.clone())
-                } else {
-                    false
-                }
+                device.hardware_id.first().is_some_and(|primary_hwid| {
+                    seen_devices.insert((
+                        device.device_instance_path.to_ascii_uppercase(),
+                        primary_hwid.trim().to_ascii_uppercase(),
+                    ))
+                })
             });
 
             if match_hardware_and_driver.is_empty() {
@@ -302,9 +304,17 @@ impl DriverInstaller {
                         // 判断驱动包是否需要解压
                         let inf_path = if driver_pack_path.is_file() {
                             // 获取解压路径（相对于解压所有INF文件的路径）
-                            let extract_path = Path::new(inf_info_item.path.as_str())
-                                .parent()
-                                .expect("get extract path failed");
+                            let relative_inf = match safe_relative_path(&inf_info_item.path) {
+                                Ok(path) => path,
+                                Err(error) => {
+                                    if index == match_info.len() - 1 {
+                                        let _ = tx.send((hardware, Err(error)));
+                                        return;
+                                    }
+                                    continue;
+                                }
+                            };
+                            let extract_path = relative_inf.parent().unwrap_or_else(|| Path::new(""));
 
                             if let Err(e) = extraction_cache.extract_once(
                                 &zip,
@@ -316,11 +326,10 @@ impl DriverInstaller {
                                 // 解压失败
                                 if index == match_info.len() - 1 {
                                     // 最后一个驱动，返回失败
-                                    tx.send((
+                                    let _ = tx.send((
                                         hardware,
                                         Err(anyhow!("{}: {}", t!("driver-unzip-failed"), e)),
-                                    ))
-                                    .expect("send result failed");
+                                    ));
                                     return;
                                 }
                                 // 继续解压下一驱动
@@ -335,14 +344,16 @@ impl DriverInstaller {
 
                             // 仅解压驱动文件，返回成功
                             if only_extract {
-                                tx.send((hardware, Ok((inf_info_item.clone(), entry.clone()))))
-                                    .expect("send result failed");
+                                let _ = tx.send((
+                                    hardware,
+                                    Ok((inf_info_item.clone(), entry.clone())),
+                                ));
                                 return;
                             }
 
                             // 获取INF路径
-                            let inf_path = drivers_path.join(&inf_info_item.path);
-                            if !inf_path.exists() {
+                            let inf_path = drivers_path.join(&relative_inf);
+                            if !inf_path.is_file() {
                                 // INF文件不存在
                                 if DEBUG.load(Ordering::Relaxed) {
                                     write_console(
@@ -352,14 +363,13 @@ impl DriverInstaller {
                                 };
                                 if index == match_info.len() - 1 {
                                     // 最后一个驱动，返回失败
-                                    tx.send((
+                                    let _ = tx.send((
                                         hardware,
                                         Err(anyhow!(
                                             "Driver file not found: {}",
                                             inf_path.display()
                                         )),
-                                    ))
-                                    .expect("send result failed");
+                                    ));
                                     return;
                                 }
                                 continue;
@@ -368,7 +378,28 @@ impl DriverInstaller {
                             inf_path
                         } else {
                             // 驱动文件指定路径
-                            drivers_path.join(&inf_info_item.path)
+                            let relative_inf = match safe_relative_path(&inf_info_item.path) {
+                                Ok(path) => path,
+                                Err(error) => {
+                                    if index == match_info.len() - 1 {
+                                        let _ = tx.send((hardware, Err(error)));
+                                        return;
+                                    }
+                                    continue;
+                                }
+                            };
+                            let inf_path = drivers_path.join(relative_inf);
+                            if !inf_path.is_file() {
+                                if index == match_info.len() - 1 {
+                                    let _ = tx.send((
+                                        hardware,
+                                        Err(anyhow!("Driver file not found: {}", inf_path.display())),
+                                    ));
+                                    return;
+                                }
+                                continue;
+                            }
+                            inf_path
                         };
 
                         // 安装驱动
@@ -382,8 +413,10 @@ impl DriverInstaller {
                             match update_driver_for_plug_and_play_devices(hwid, &inf_path, force) {
                                 Ok(()) => {
                                     // 安装驱动成功
-                                    tx.send((hardware, Ok((inf_info_item.clone(), entry.clone()))))
-                                        .expect("send result failed");
+                                    let _ = tx.send((
+                                        hardware,
+                                        Ok((inf_info_item.clone(), entry.clone())),
+                                    ));
                                     return;
                                 }
                                 Err(e) => {
@@ -411,8 +444,7 @@ impl DriverInstaller {
                                             );
                                             return;
                                         }
-                                        tx.send((hardware, Err(e.into())))
-                                            .expect("send result failed");
+                                        let _ = tx.send((hardware, Err(e.into())));
                                         return;
                                     }
                                     continue;
@@ -426,18 +458,16 @@ impl DriverInstaller {
                                 );
                             }
                             // 没有硬件ID，返回失败
-                            tx.send((
+                            let _ = tx.send((
                                 hardware,
                                 Err(anyhow!("No hardware ID found for: {}", inf_info_item.path)),
-                            ))
-                            .expect("send result failed");
+                            ));
                             return;
                         }
                     }
 
                     // 没有找到合适的驱动
-                    tx.send((hardware, Err(anyhow!("No driver found"))))
-                        .expect("send result failed");
+                    let _ = tx.send((hardware, Err(anyhow!("No driver found"))));
                 });
             }
 
@@ -445,7 +475,13 @@ impl DriverInstaller {
             drop(tx); // 关闭发送端
 
             // 在主线程中进行消息格式化和输出
-            for (hardware, result) in rx.iter() {
+            let mut install_results: Vec<_> = rx.iter().collect();
+            install_results.sort_by(|(left, _), (right, _)| {
+                left.device_instance_path
+                    .to_ascii_lowercase()
+                    .cmp(&right.device_instance_path.to_ascii_lowercase())
+            });
+            for (hardware, result) in install_results {
                 match result {
                     Ok((inf_info_item, entry)) => {
                         write_console(
@@ -782,4 +818,19 @@ fn current_match_context() -> MatchContext {
         arch: current_arch,
         os_version: format!("{}.{}.{}", version.major, version.minor, version.build),
     }
+}
+
+fn safe_relative_path(path: &str) -> Result<PathBuf> {
+    let candidate = Path::new(path);
+    if candidate.as_os_str().is_empty()
+        || candidate.components().any(|component| {
+            matches!(
+                component,
+                Component::Prefix(_) | Component::RootDir | Component::ParentDir
+            )
+        })
+    {
+        return Err(anyhow!("unsafe driver path in index: {path}"));
+    }
+    Ok(candidate.to_path_buf())
 }
