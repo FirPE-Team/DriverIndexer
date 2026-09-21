@@ -14,6 +14,7 @@ mod cli;
 mod command;
 mod driver_index;
 mod driver_manager;
+mod driver_match;
 mod hardware;
 mod tests;
 mod utils;
