@@ -9,11 +9,11 @@ use crate::utils::utils::{find_offline_system, get_file_list, get_native_arch};
 use crate::{DEBUG, TEMP_PATH};
 use anyhow::{anyhow, Context, Result};
 use rust_i18n::t;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc::channel;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::UNIX_EPOCH;
 use threadpool::ThreadPool;
 use windows::Win32::Foundation::ERROR_NO_MORE_ITEMS;
@@ -39,6 +39,45 @@ pub struct InstallOptions {
     pub exclude_class: Option<Vec<String>>,
     pub user_extract_path: Option<PathBuf>,
     pub force: bool,
+}
+
+#[derive(Default)]
+struct ExtractionCache {
+    entries: Mutex<HashMap<PathBuf, Arc<OnceLock<Result<(), String>>>>>,
+}
+
+impl ExtractionCache {
+    fn extract_once(
+        &self,
+        zip: &SevenZip,
+        archive: &Path,
+        password: Option<&str>,
+        relative_dir: &Path,
+        destination: &Path,
+    ) -> Result<()> {
+        let entry = {
+            let mut entries = self
+                .entries
+                .lock()
+                .map_err(|_| anyhow!("driver extraction cache lock poisoned"))?;
+            entries
+                .entry(relative_dir.to_path_buf())
+                .or_insert_with(|| Arc::new(OnceLock::new()))
+                .clone()
+        };
+        entry
+            .get_or_init(|| {
+                zip.extract_files_from_path(
+                    archive,
+                    password,
+                    &relative_dir.to_string_lossy(),
+                    destination,
+                )
+                .map_err(|error| error.to_string())
+            })
+            .clone()
+            .map_err(anyhow::Error::msg)
+    }
 }
 
 impl DriverInstaller {
@@ -130,6 +169,7 @@ impl DriverInstaller {
         let mut total_list: Vec<HardwareInfo> = Vec::new();
         let driver_lookup = DriverLookup::new(&config.drivers);
         let match_context = current_match_context();
+        let extraction_cache = Arc::new(ExtractionCache::default());
 
         // 3次匹配，避免部分驱动安装不全
         for scan_count in 0..3 {
@@ -208,7 +248,10 @@ impl DriverInstaller {
             );
 
             // 创建线程池（池大小以可用 CPU 核心数为准）
-            let pool = ThreadPool::new(num_cpus::get());
+            let worker_count = num_cpus::get()
+                .min(match_hardware_and_driver.len())
+                .max(1);
+            let pool = ThreadPool::new(worker_count);
             let (tx, rx) = channel();
 
             // 循环匹配信息
@@ -250,6 +293,7 @@ impl DriverInstaller {
                     .collect();
                 let tx = tx.clone();
                 let zip = self.zip.clone();
+                let extraction_cache = Arc::clone(&extraction_cache);
 
                 // 为每个需要安装驱动的设备分配一个线程
                 pool.execute(move || {
@@ -262,10 +306,11 @@ impl DriverInstaller {
                                 .parent()
                                 .expect("get extract path failed");
 
-                            if let Err(e) = zip.extract_files_from_path(
+                            if let Err(e) = extraction_cache.extract_once(
+                                &zip,
                                 &driver_pack_path,
                                 password.as_deref(),
-                                &extract_path.to_string_lossy(),
+                                extract_path,
                                 &drivers_path,
                             ) {
                                 // 解压失败
