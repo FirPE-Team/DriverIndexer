@@ -724,3 +724,47 @@ fn parse_section_metadata(section_name: &str) -> (DriverArch, String) {
 
     (arch, os_version)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_and_rejects_blank_hardware_ids() {
+        assert_eq!(normalize_hardware_id("  pci\\ven_1234  "), Some("PCI\\VEN_1234".into()));
+        assert_eq!(normalize_hardware_id("  "), None);
+    }
+
+    #[test]
+    fn parses_decorated_model_sections() {
+        assert_eq!(
+            parse_section_metadata("Vendor.NTamd64.10.0"),
+            (DriverArch::NTamd64, "10.0".into())
+        );
+    }
+
+    #[test]
+    fn rejects_old_index_format() {
+        let mut index = DriverIndex::new(0, 0, None, "sha256:test".into(), Vec::new());
+        index.format_version = 0;
+        assert!(index.validate_format().is_err());
+    }
+
+    #[test]
+    fn compressed_index_round_trips() {
+        let index = DriverIndex::new(0, 0, None, "sha256:test".into(), Vec::new());
+        let compressed = index.to_json_compress().unwrap();
+        let nonce = std::time::SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "driver-index-test-{}-{nonce}.index",
+            std::process::id()
+        ));
+        std::fs::write(&path, compressed).unwrap();
+        let decoded = DriverIndex::from_path(&path).unwrap();
+        let _ = std::fs::remove_file(path);
+        assert_eq!(decoded, index);
+    }
+}

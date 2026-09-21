@@ -76,8 +76,6 @@ mod Tests {
 
         // 测试JSON序列化和反序列化
         let temp_path = temp_dir();
-        let json_path = temp_path.join("test_index.json");
-
         // 测试JSON序列化
         assert!(driver_index.to_json().is_ok());
     }
@@ -101,6 +99,7 @@ mod Tests {
     }
 
     #[test]
+    #[ignore = "requires administrator privileges and physical Windows devices"]
     fn get_device_info_test() {
         let hardware_list = enumerate_hardware(None, true).unwrap();
         println!("API Device Info count: {}", hardware_list.len());
