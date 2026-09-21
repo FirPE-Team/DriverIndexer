@@ -1,7 +1,7 @@
 use crate::utils::console::{write_console, ConsoleType};
 use crate::utils::setupapi::SetupAPI;
 use crate::utils::utils::{
-    check_catalog_signature, compare_version, format_bytes, get_file_crc32, is_whql_signature,
+    check_catalog_signature, compare_version, format_bytes, is_whql_signature,
 };
 use crate::DEBUG;
 use anyhow::{anyhow, Context, Result};
@@ -15,6 +15,11 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 use std::time::UNIX_EPOCH;
+use sha2::{Digest, Sha256};
+use walkdir::WalkDir;
+
+pub const DRIVER_INDEX_FORMAT_VERSION: u16 = 2;
+pub const MATCHING_POLICY_VERSION: u16 = 1;
 
 /// Normalize a Plug and Play identifier for case-insensitive matching.
 pub fn normalize_hardware_id(id: &str) -> Option<String> {
@@ -25,12 +30,21 @@ pub fn normalize_hardware_id(id: &str) -> Option<String> {
 /// 驱动索引
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Encode, Decode)]
 pub struct DriverIndex {
+    /// Index schema version. Older indexes are intentionally rejected.
+    #[serde(default)]
+    pub format_version: u16,
+    /// Version of the candidate ranking policy used to create this index.
+    #[serde(default)]
+    pub matching_policy_version: u16,
     /// 索引文件大小（字节）
     pub size: u64,
     /// 索引文件修改时间戳（Unix 时间戳）
     pub timestamp: u64,
     /// 索引文件CRC32校验值
     pub crc32: Option<u32>,
+    /// Fingerprint of the source package or directory manifest.
+    #[serde(default)]
+    pub source_fingerprint: String,
     /// 索引数据（INF驱动信息列表）
     pub drivers: Vec<InfInfo>,
 }
@@ -111,11 +125,20 @@ impl DriverIndex {
     ///
     /// # 返回值
     /// - `DriverIndex`: 新的驱动索引
-    pub fn new(size: u64, timestamp: u64, crc32: Option<u32>, drivers: Vec<InfInfo>) -> Self {
+    pub fn new(
+        size: u64,
+        timestamp: u64,
+        crc32: Option<u32>,
+        source_fingerprint: String,
+        drivers: Vec<InfInfo>,
+    ) -> Self {
         Self {
+            format_version: DRIVER_INDEX_FORMAT_VERSION,
+            matching_policy_version: MATCHING_POLICY_VERSION,
             size,
             timestamp,
             crc32,
+            source_fingerprint,
             drivers,
         }
     }
@@ -131,6 +154,19 @@ impl DriverIndex {
         let total_w = label_w + 10;
         result.push_str("Driver Index Info:\n");
         result.push_str(&format!("{:-^total_w$}\n", "-", total_w = total_w));
+
+        result.push_str(&format!(
+            "{:<width$} {}\n",
+            "Format Version:",
+            self.format_version,
+            width = label_w
+        ));
+        result.push_str(&format!(
+            "{:<width$} {}\n",
+            "Matching Policy:",
+            self.matching_policy_version,
+            width = label_w
+        ));
 
         // 驱动大小
         result.push_str(&format!(
@@ -212,7 +248,7 @@ impl DriverIndex {
         }
         config_file.seek(SeekFrom::Start(0))?;
 
-        if magic == [0x28, 0xB5, 0x2F, 0xFD] {
+        let index: DriverIndex = if magic == [0x28, 0xB5, 0x2F, 0xFD] {
             let decompressed =
                 zstd::decode_all(&config_file).with_context(|| "Decompress config failed")?;
             serde_json::from_slice(&decompressed)
@@ -223,7 +259,28 @@ impl DriverIndex {
                 .read_to_string(&mut content)
                 .with_context(|| format!("read index file {:?}", path))?;
             serde_json::from_str(&content).with_context(|| format!("parse index file {:?}", path))
+        }?;
+        index.validate_format()?;
+        Ok(index)
+    }
+
+    fn validate_format(&self) -> Result<()> {
+        if self.format_version != DRIVER_INDEX_FORMAT_VERSION {
+            return Err(anyhow!(
+                "unsupported driver index format {}, rebuild the index",
+                self.format_version
+            ));
         }
+        if self.matching_policy_version != MATCHING_POLICY_VERSION {
+            return Err(anyhow!(
+                "unsupported matching policy {}, rebuild the index",
+                self.matching_policy_version
+            ));
+        }
+        if self.source_fingerprint.is_empty() {
+            return Err(anyhow!("driver index has no source fingerprint, rebuild the index"));
+        }
+        Ok(())
     }
 
     /// 将索引数据转换为Bincode编码的字节向量
@@ -259,7 +316,6 @@ impl DriverIndex {
             .metadata()
             .with_context(|| format!("Failed to get metadata for {:?}", driver_pack_path))?;
 
-        // 获取驱动包大小
         let driver_size = metadata.len();
         if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
             write_console(
@@ -268,12 +324,6 @@ impl DriverIndex {
             );
         }
 
-        // 校验驱动包大小是否匹配
-        if driver_size != self.size {
-            return Err(anyhow!("driver pack size not match"));
-        }
-
-        // 获取驱动包修改时间戳
         let timestamp = metadata.modified()?.duration_since(UNIX_EPOCH)?.as_secs();
         if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
             write_console(
@@ -285,50 +335,74 @@ impl DriverIndex {
             );
         }
 
-        // 如果大小一致，且本地与索引时间的差值（绝对值）在 :: 秒以内，则认为匹配
-        if (timestamp as i64 - self.timestamp as i64).abs() <= 2 {
+        // Metadata is a fast path for regular files. The fingerprint remains the
+        // authoritative check whenever metadata changed or the source is a directory.
+        if driver_pack_path.is_file()
+            && driver_size == self.size
+            && (timestamp as i64 - self.timestamp as i64).abs() <= 2
+        {
             return Ok(());
         }
 
-        // 时间戳不一致，计算CRC32校验值是否匹配
-        match self.crc32 {
-            Some(crc32) => {
-                let driver_crc32 = get_file_crc32(driver_pack_path)?;
-
-                if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
-                    write_console(
-                        ConsoleType::Debug,
-                        &format!("driver crc32: {}, config crc32: {}", driver_crc32, crc32),
-                    );
-                }
-                if driver_crc32 != crc32 {
-                    return Err(anyhow!("driver crc32 not match"));
-                }
-
-                // 自动同步时间戳（同步驱动包修改时间戳）
-                match filetime::set_file_mtime(
-                    driver_pack_path,
-                    filetime::FileTime::from_unix_time(self.timestamp as i64, 0),
-                ) {
-                    Ok(_) => {
-                        if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
-                            write_console(ConsoleType::Debug, "Timestamp synced to config value.");
-                        }
-                    }
-                    Err(e) => {
-                        if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
-                            write_console(
-                                ConsoleType::Debug,
-                                &format!("Warning: Failed to sync timestamp: {}", e),
-                            );
-                        }
-                    }
-                }
-                Ok(())
-            }
-            None => Err(anyhow!("driver pack crc32 not match")),
+        let fingerprint = source_fingerprint(driver_pack_path)?;
+        if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
+            write_console(
+                ConsoleType::Debug,
+                &format!(
+                    "driver fingerprint: {}, config fingerprint: {}",
+                    fingerprint, self.source_fingerprint
+                ),
+            );
         }
+        if fingerprint != self.source_fingerprint {
+            return Err(anyhow!("driver pack fingerprint not match"));
+        }
+        Ok(())
     }
+}
+
+/// Create a stable SHA-256 fingerprint for a file or a directory manifest.
+pub fn source_fingerprint(path: &Path) -> Result<String> {
+    let mut hasher = Sha256::new();
+    if path.is_file() {
+        let mut file = File::open(path)
+            .with_context(|| format!("open source file {:?} for fingerprint", path))?;
+        let mut buffer = [0u8; 1024 * 1024];
+        loop {
+            let count = file.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            hasher.update(&buffer[..count]);
+        }
+    } else if path.is_dir() {
+        let mut files = Vec::new();
+        for entry in WalkDir::new(path).into_iter().filter_map(Result::ok) {
+            if entry.file_type().is_file() {
+                let relative = entry.path().strip_prefix(path).unwrap_or(entry.path());
+                let metadata = entry.metadata()?;
+                let modified = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+                    .map_or(0, |value| value.as_secs());
+                files.push((
+                    relative.to_string_lossy().replace('\\', "/").to_ascii_lowercase(),
+                    metadata.len(),
+                    modified,
+                ));
+            }
+        }
+        files.sort();
+        for (relative, size, modified) in files {
+            hasher.update(relative.as_bytes());
+            hasher.update(size.to_le_bytes());
+            hasher.update(modified.to_le_bytes());
+        }
+    } else {
+        return Err(anyhow!("source path does not exist: {}", path.display()));
+    }
+    Ok(format!("sha256:{:x}", hasher.finalize()))
 }
 
 impl DriverArch {

@@ -1,4 +1,4 @@
-use crate::driver_index::{DriverIndex, InfInfo};
+use crate::driver_index::{source_fingerprint, DriverIndex, InfInfo};
 use crate::utils::console::{write_console, ConsoleType};
 use crate::utils::sevenzip::SevenZip;
 use crate::utils::utils::{get_file_crc32, get_file_list};
@@ -13,6 +13,10 @@ use std::sync::mpsc::channel;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 use threadpool::ThreadPool;
+use windows::Win32::Storage::FileSystem::{
+    MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+};
+use windows::core::HSTRING;
 
 /// 创建索引文件
 ///
@@ -176,7 +180,9 @@ pub fn create_index(
     };
 
     // 创建索引配置文件
-    let config = DriverIndex::new(size, timestamp, crc32, inf_info_list);
+    let fingerprint = source_fingerprint(drive_path)
+        .with_context(|| "create driver source fingerprint failed")?;
+    let config = DriverIndex::new(size, timestamp, crc32, fingerprint, inf_info_list);
 
     let data = if compress {
         // 压缩索引配置文件
@@ -190,8 +196,32 @@ pub fn create_index(
         json.as_bytes().to_vec()
     };
 
-    // 保存索引配置文件
-    fs::write(&index_path, data).with_context(|| t!("index-save-failed"))?;
+    // Save atomically so an interrupted write cannot leave a corrupt index.
+    let temp_name = format!(
+        ".{}.tmp-{}",
+        index_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("driver.index"),
+        std::process::id()
+    );
+    let temp_path = index_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(temp_name);
+    fs::write(&temp_path, data).with_context(|| t!("index-save-failed"))?;
+    let source = HSTRING::from(temp_path.as_path());
+    let destination = HSTRING::from(index_path.as_path());
+    if let Err(error) = unsafe {
+        MoveFileExW(
+            &source,
+            &destination,
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    } {
+        let _ = fs::remove_file(&temp_path);
+        return Err(error).with_context(|| t!("index-save-failed"));
+    }
 
     Ok((
         inf_list.len() as u32,

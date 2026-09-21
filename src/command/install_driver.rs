@@ -77,6 +77,7 @@ impl DriverInstaller {
         };
 
         // 索引文件路径
+        let explicit_config = config.is_some();
         let config_path = if let Some(config) = config {
             Some(config.to_path_buf())
         } else {
@@ -106,6 +107,11 @@ impl DriverInstaller {
                             config
                         }
                     }
+                } else if explicit_config {
+                    return Err(anyhow!(
+                        "driver index {} is invalid or obsolete; rebuild it with the index command",
+                        config_path.display()
+                    ));
                 } else {
                     // 索引文件解析失败，即时建立索引文件
                     write_console(ConsoleType::Warning, &t!("config-parse-failed"));
@@ -649,6 +655,7 @@ impl DriverInstaller {
                 .len(),
             timestamp,
             None,
+            crate::driver_index::source_fingerprint(driver_pack_path)?,
             inf_info_list,
         ))
     }

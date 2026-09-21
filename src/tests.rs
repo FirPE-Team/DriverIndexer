@@ -63,6 +63,7 @@ mod Tests {
             1024,
             1694400000,
             None,
+            "sha256:test".to_string(),
             vec![inf_info1.clone(), inf_info2.clone()],
         );
 
