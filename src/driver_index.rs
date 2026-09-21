@@ -45,6 +45,9 @@ pub struct DriverIndex {
     /// Fingerprint of the source package or directory manifest.
     #[serde(default)]
     pub source_fingerprint: String,
+    /// Generated files below a source directory that are omitted from its manifest.
+    #[serde(default)]
+    pub source_exclusions: Vec<String>,
     /// 索引数据（INF驱动信息列表）
     pub drivers: Vec<InfInfo>,
 }
@@ -139,6 +142,7 @@ impl DriverIndex {
             timestamp,
             crc32,
             source_fingerprint,
+            source_exclusions: Vec::new(),
             drivers,
         }
     }
@@ -346,7 +350,7 @@ impl DriverIndex {
             return Ok(());
         }
 
-        let fingerprint = source_fingerprint(driver_pack_path)?;
+        let fingerprint = source_fingerprint_excluding(driver_pack_path, &self.source_exclusions)?;
         if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
             write_console(
                 ConsoleType::Debug,
@@ -365,6 +369,10 @@ impl DriverIndex {
 
 /// Create a stable SHA-256 fingerprint for a file or a directory manifest.
 pub fn source_fingerprint(path: &Path) -> Result<String> {
+    source_fingerprint_excluding(path, &[])
+}
+
+pub fn source_fingerprint_excluding(path: &Path, exclusions: &[String]) -> Result<String> {
     let mut hasher = Sha256::new();
     if path.is_file() {
         let mut file = File::open(path)
@@ -382,20 +390,23 @@ pub fn source_fingerprint(path: &Path) -> Result<String> {
         for entry in WalkDir::new(path).into_iter().filter_map(Result::ok) {
             if entry.file_type().is_file() {
                 let relative = entry.path().strip_prefix(path).unwrap_or(entry.path());
+                let relative_name = relative
+                    .to_string_lossy()
+                    .replace('\\', "/")
+                    .to_ascii_lowercase();
+                if exclusions
+                    .iter()
+                    .any(|excluded| excluded.eq_ignore_ascii_case(&relative_name))
+                {
+                    continue;
+                }
                 let metadata = entry.metadata()?;
                 let modified = metadata
                     .modified()
                     .ok()
                     .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
                     .map_or(0, |value| value.as_secs());
-                files.push((
-                    relative
-                        .to_string_lossy()
-                        .replace('\\', "/")
-                        .to_ascii_lowercase(),
-                    metadata.len(),
-                    modified,
-                ));
+                files.push((relative_name, metadata.len(), modified));
             }
         }
         files.sort();
@@ -770,5 +781,22 @@ mod tests {
         let decoded = DriverIndex::from_path(&path).unwrap();
         let _ = std::fs::remove_file(path);
         assert_eq!(decoded, index);
+    }
+
+    #[test]
+    fn directory_fingerprint_can_exclude_generated_index() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("driver-source-test-{nonce}"));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("driver.inf"), b"driver").unwrap();
+        let exclusions = vec!["drivers.index".to_string()];
+        let before = source_fingerprint_excluding(&root, &exclusions).unwrap();
+        std::fs::write(root.join("drivers.index"), b"generated").unwrap();
+        let after = source_fingerprint_excluding(&root, &exclusions).unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(before, after);
     }
 }

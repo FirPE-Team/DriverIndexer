@@ -1,5 +1,5 @@
 use crate::TEMP_PATH;
-use crate::driver_index::{DriverIndex, InfInfo, source_fingerprint};
+use crate::driver_index::{DriverIndex, InfInfo, source_fingerprint_excluding};
 use crate::utils::console::{ConsoleType, write_console};
 use crate::utils::sevenzip::SevenZip;
 use crate::utils::utils::{get_file_crc32, get_file_list};
@@ -180,9 +180,22 @@ pub fn create_index(
     };
 
     // 创建索引配置文件
-    let fingerprint = source_fingerprint(drive_path)
+    let source_exclusions = index_path
+        .strip_prefix(drive_path)
+        .ok()
+        .filter(|_| drive_path.is_dir())
+        .map(|path| {
+            vec![
+                path.to_string_lossy()
+                    .replace('\\', "/")
+                    .to_ascii_lowercase(),
+            ]
+        })
+        .unwrap_or_default();
+    let fingerprint = source_fingerprint_excluding(drive_path, &source_exclusions)
         .with_context(|| "create driver source fingerprint failed")?;
-    let config = DriverIndex::new(size, timestamp, crc32, fingerprint, inf_info_list);
+    let mut config = DriverIndex::new(size, timestamp, crc32, fingerprint, inf_info_list);
+    config.source_exclusions = source_exclusions;
 
     let data = if compress {
         // 压缩索引配置文件
