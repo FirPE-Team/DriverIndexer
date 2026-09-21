@@ -20,7 +20,7 @@ mod utils;
 
 use crate::cli::Cli;
 use crate::cli::Command;
-use crate::command::{check_if_bundled, DriverInstaller};
+use crate::command::{check_if_bundled, DriverInstaller, InstallOptions};
 use crate::driver_index::DriverIndex;
 use crate::driver_manager::DriverManger;
 use crate::utils::console::{write_console, ConsoleType};
@@ -94,17 +94,12 @@ fn main() {
 
         let current_exe = env::current_exe().expect("Get Current Executable Path Failed");
         let driver_loader = DriverInstaller::new();
-        let result = match driver_loader.install_driver(
-            &current_exe,
-            footer.get_password(),
-            None,
-            true,
-            false,
-            None,
-            None,
-            None,
-            false,
-        ) {
+        let result = match driver_loader.install_driver(&InstallOptions {
+            driver_pack_path: current_exe,
+            password: footer.get_password().map(str::to_owned),
+            skip_verify: true,
+            ..Default::default()
+        }) {
             Ok(_) => Ok(()),
             Err(e) => {
                 write_console(ConsoleType::Error, &e.to_string());
@@ -497,17 +492,17 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                             ),
                         );
 
-                        match driver_loader.install_driver(
-                            drive_path_item,
-                            password.as_deref(),
-                            index.as_deref(),
-                            *skip_verify,
-                            *missing_only,
-                            class.as_deref(),
-                            exclude_class.as_deref(),
-                            extract_path.as_deref(),
-                            *force,
-                        ) {
+                        match driver_loader.install_driver(&InstallOptions {
+                            driver_pack_path: drive_path_item.clone(),
+                            password: password.clone(),
+                            config: index,
+                            skip_verify: *skip_verify,
+                            missing_only: *missing_only,
+                            class: class.clone(),
+                            exclude_class: exclude_class.clone(),
+                            user_extract_path: extract_path.clone(),
+                            force: *force,
+                        }) {
                             Ok(_) => {}
                             Err(e) => {
                                 write_console(ConsoleType::Error, &e.to_string());
@@ -528,17 +523,17 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 ),
             );
 
-            match driver_loader.install_driver(
-                driver_path,
-                password.as_deref(),
-                index_path.as_deref(),
-                *skip_verify,
-                *missing_only,
-                class.as_deref(),
-                exclude_class.as_deref(),
-                extract_path.as_deref(),
-                *force,
-            ) {
+            match driver_loader.install_driver(&InstallOptions {
+                driver_pack_path: driver_path.clone(),
+                password: password.clone(),
+                config: index_path.clone(),
+                skip_verify: *skip_verify,
+                missing_only: *missing_only,
+                class: class.clone(),
+                exclude_class: exclude_class.clone(),
+                user_extract_path: extract_path.clone(),
+                force: *force,
+            }) {
                 Ok(_) => Ok(()),
                 Err(e) => {
                     write_console(ConsoleType::Error, &e.to_string());

@@ -26,6 +26,20 @@ pub struct DriverInstaller {
     zip: SevenZip,
 }
 
+/// Options controlling an online or offline driver installation.
+#[derive(Debug, Clone, Default)]
+pub struct InstallOptions {
+    pub driver_pack_path: PathBuf,
+    pub password: Option<String>,
+    pub config: Option<PathBuf>,
+    pub skip_verify: bool,
+    pub missing_only: bool,
+    pub class: Option<Vec<String>>,
+    pub exclude_class: Option<Vec<String>>,
+    pub user_extract_path: Option<PathBuf>,
+    pub force: bool,
+}
+
 impl DriverInstaller {
     pub fn new() -> Self {
         Self {
@@ -45,18 +59,16 @@ impl DriverInstaller {
     ///
     /// # 返回值
     /// - `Result<()>` - 加载驱动结果
-    pub fn install_driver(
-        &self,
-        driver_pack_path: &Path,
-        password: Option<&str>,
-        config: Option<&Path>,
-        skip_verify: bool,
-        missing_only: bool,
-        class: Option<&[String]>,
-        exclude_class: Option<&[String]>,
-        user_extract_path: Option<&Path>,
-        force: bool,
-    ) -> Result<()> {
+    pub fn install_driver(&self, options: &InstallOptions) -> Result<()> {
+        let driver_pack_path = &options.driver_pack_path;
+        let password = options.password.as_deref();
+        let config = options.config.as_deref();
+        let skip_verify = options.skip_verify;
+        let missing_only = options.missing_only;
+        let class = options.class.as_deref();
+        let exclude_class = options.exclude_class.as_deref();
+        let user_extract_path = options.user_extract_path.as_deref();
+        let force = options.force;
         // 当前临时驱动解压路径
         let extract_path = if driver_pack_path.is_dir() {
             driver_pack_path.to_path_buf()
@@ -441,17 +453,14 @@ impl DriverInstaller {
                     path = driver_path.to_string_lossy().to_string()
                 ),
             );
-            return self.install_driver(
-                &driver_path,
-                None,
-                None,
-                true,
+            return self.install_driver(&InstallOptions {
+                driver_pack_path: driver_path,
+                skip_verify: true,
                 missing_only,
-                class,
-                exclude_class,
-                None,
-                false,
-            );
+                class: class.map(|items| items.to_vec()),
+                exclude_class: exclude_class.map(|items| items.to_vec()),
+                ..Default::default()
+            });
         }
 
         // 未指定系统盘，全盘搜索离线系统驱动
@@ -479,17 +488,14 @@ impl DriverInstaller {
                     path = system_drive.to_string_lossy().to_string()
                 ),
             );
-            self.install_driver(
-                &driver_path,
-                None,
-                None,
-                true,
+            self.install_driver(&InstallOptions {
+                driver_pack_path: driver_path,
+                skip_verify: true,
                 missing_only,
-                class,
-                exclude_class,
-                None,
-                false,
-            )?;
+                class: class.map(|items| items.to_vec()),
+                exclude_class: exclude_class.map(|items| items.to_vec()),
+                ..Default::default()
+            })?;
         }
         Ok(())
     }
