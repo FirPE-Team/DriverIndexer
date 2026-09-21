@@ -93,7 +93,13 @@ fn main() {
         }
 
         let current_exe = env::current_exe().expect("Get Current Executable Path Failed");
-        let driver_loader = DriverInstaller::new();
+        let driver_loader = match DriverInstaller::new() {
+            Ok(installer) => installer,
+            Err(error) => {
+                write_console(ConsoleType::Error, &error.to_string());
+                process::exit(exitcode::IOERR);
+            }
+        };
         let result = match driver_loader.install_driver(&InstallOptions {
             driver_pack_path: current_exe,
             password: footer.get_password().map(str::to_owned),
@@ -434,7 +440,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 }
             }
 
-            let driver_loader = DriverInstaller::new();
+            let driver_loader = DriverInstaller::new()?;
 
             // 处理通配符
             if let Some(driver_name) = driver_path.file_name() {
@@ -561,7 +567,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 );
             };
 
-            let driver_loader = DriverInstaller::new();
+            let driver_loader = DriverInstaller::new()?;
             match driver_loader.load_offline_driver(
                 system_drive.as_deref(),
                 *missing_only,

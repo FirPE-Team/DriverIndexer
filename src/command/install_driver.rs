@@ -84,10 +84,10 @@ impl ExtractionCache {
 }
 
 impl DriverInstaller {
-    pub fn new() -> Self {
-        Self {
-            zip: SevenZip::new().expect("Create SevenZip instance failed"),
-        }
+    pub fn new() -> Result<Self> {
+        Ok(Self {
+            zip: SevenZip::new().with_context(|| "Create SevenZip instance failed")?,
+        })
     }
 
     /// 加载驱动包。支持驱动包路径、驱动路径
@@ -136,7 +136,15 @@ impl DriverInstaller {
                         config
                     } else {
                         // 索引文件解析成功，如果不跳过校验且校验失败，则重新构建索引文件校
-                        if !skip_verify && config.check_config(driver_pack_path).is_err() {
+                        if !skip_verify && let Err(error) = config.check_config(driver_pack_path) {
+                            if explicit_config {
+                                return Err(error).with_context(|| {
+                                    format!(
+                                        "driver index {} does not match the driver source; rebuild it",
+                                        config_path.display()
+                                    )
+                                });
+                            }
                             // 驱动包与索引文件不匹配，即时建立索引文件
                             write_console(ConsoleType::Warning, &t!("driver-not-match-config"));
                             write_console(ConsoleType::Info, &t!("create-index-info"));
@@ -685,7 +693,7 @@ impl DriverInstaller {
                         // 增加成功计数
                         success_count.fetch_add(1, Ordering::Relaxed);
                         // 发送到主线程
-                        tx.send(inf_info).expect("Send inf_info failed");
+                        let _ = tx.send(inf_info);
                     }
                     Err(e) => {
                         write_console(
