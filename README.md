@@ -126,7 +126,7 @@ Use index files or directly specify driver package paths for installation.
   | `--class <class>`            | `-c`                | **Include** the specified driver class, only install drivers matching the class. Multiple classes can be specified repeatedly.       |
   | `--exclude-class <class>`    | `-e`                | **Exclude** the specified driver class, do not install drivers of the specified class. Multiple classes can be specified repeatedly. |
   | `--missing-only`             | `-m`                | Only install drivers for devices without drivers installed (i.e., devices with missing drivers).                                     |
-  | `--extract-path <directory>` | `-x`                | Only extract drivers to the specified directory, do not perform installation operations. Default extraction to temporary directory.  |
+  | `--extract-to <directory>`   | `-x`                | Only extract drivers to the specified directory, do not perform installation operations. Default extraction to temporary directory.  |
   | `--skip-verify`              | `-s`                | Skip driver index file verification.                                                                                                 |
   | `--force`                    | `-f`                | Force installation, overwrite existing drivers.                                                                                      |
 
