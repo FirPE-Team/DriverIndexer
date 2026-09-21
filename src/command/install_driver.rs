@@ -1,6 +1,6 @@
 use crate::command::check_if_bundled;
 use crate::driver_index::{DriverArch, DriverIndex, HardwareEntry, InfInfo};
-use crate::driver_match::{match_drivers, MatchContext};
+use crate::driver_match::{match_drivers, DriverLookup, MatchContext};
 use crate::hardware::{enumerate_hardware, update_driver_for_plug_and_play_devices, HardwareInfo};
 use crate::utils::console::{write_console, ConsoleType};
 use crate::utils::setupapi::SetupAPI;
@@ -128,6 +128,8 @@ impl DriverInstaller {
         };
 
         let mut total_list: Vec<HardwareInfo> = Vec::new();
+        let driver_lookup = DriverLookup::new(&config.drivers);
+        let match_context = current_match_context();
 
         // 3次匹配，避免部分驱动安装不全
         for scan_count in 0..3 {
@@ -176,9 +178,12 @@ impl DriverInstaller {
             if DEBUG.load(Ordering::Relaxed) {
                 write_console(ConsoleType::Debug, "Match hardware info");
             }
-            let context = current_match_context();
-            let mut match_hardware_and_driver =
-                match_drivers(&hwid_list, &config.drivers, &context, class, exclude_class);
+            let mut match_hardware_and_driver = driver_lookup.match_devices(
+                &hwid_list,
+                &match_context,
+                class,
+                exclude_class,
+            );
 
             // 由于存在多个设备匹配到同一个硬件ID的情况（但设备实例不同），而 UpdateDriverForPlugAndPlayDevices 需要提供硬件id而不是设备实例
             // 故需要去重（保留第一个出现的 HWID，删除后续相同的 HWID项目）

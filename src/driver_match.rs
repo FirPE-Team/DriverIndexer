@@ -2,6 +2,7 @@ use crate::driver_index::{normalize_hardware_id, DriverArch, HardwareEntry, InfI
 use crate::hardware::HardwareInfo;
 use crate::utils::utils::compare_version;
 use std::cmp::Ordering;
+use std::collections::{BTreeSet, HashMap};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum MatchType {
@@ -50,27 +51,61 @@ pub struct DriverMatch<'a> {
     pub rank: MatchRank,
 }
 
-pub fn match_drivers<'a>(
-    devices: &'a [HardwareInfo],
+/// In-memory reverse index from normalized PnP identifiers to INF entries.
+pub struct DriverLookup<'a> {
     drivers: &'a [InfInfo],
-    context: &MatchContext,
-    class_filter: Option<&[String]>,
-    class_exclude: Option<&[String]>,
-) -> Vec<(&'a HardwareInfo, Vec<DriverMatch<'a>>)> {
-    let explicit_supplemental = class_filter.is_some_and(|classes| {
-        classes.iter().any(|class| is_supplemental_class(class))
-    });
-    let mut results = Vec::new();
+    by_id: HashMap<String, Vec<(usize, usize)>>,
+}
 
-    for device in devices {
-        let mut candidates = Vec::new();
-        for inf in drivers {
-            if !class_allowed(&inf.class, class_filter, class_exclude) {
-                continue;
+impl<'a> DriverLookup<'a> {
+    pub fn new(drivers: &'a [InfInfo]) -> Self {
+        let mut by_id: HashMap<String, Vec<(usize, usize)>> = HashMap::new();
+        for (inf_index, inf) in drivers.iter().enumerate() {
+            for (entry_index, entry) in inf.hardware.iter().enumerate() {
+                let ids = std::iter::once(&entry.hardware_id).chain(&entry.compatible_ids);
+                for id in ids.filter_map(|id| normalize_hardware_id(id)) {
+                    let locations = by_id.entry(id).or_default();
+                    if locations.last() != Some(&(inf_index, entry_index)) {
+                        locations.push((inf_index, entry_index));
+                    }
+                }
+            }
+        }
+        Self { drivers, by_id }
+    }
+
+    pub fn match_devices<'d>(
+        &self,
+        devices: &'d [HardwareInfo],
+        context: &MatchContext,
+        class_filter: Option<&[String]>,
+        class_exclude: Option<&[String]>,
+    ) -> Vec<(&'d HardwareInfo, Vec<DriverMatch<'a>>)> {
+        let explicit_supplemental = class_filter.is_some_and(|classes| {
+            classes.iter().any(|class| is_supplemental_class(class))
+        });
+        let mut results = Vec::new();
+
+        for device in devices {
+            let mut locations = BTreeSet::new();
+            for id in device
+                .hardware_id
+                .iter()
+                .chain(&device.compatible_id)
+                .filter_map(|id| normalize_hardware_id(id))
+            {
+                if let Some(matches) = self.by_id.get(&id) {
+                    locations.extend(matches.iter().copied());
+                }
             }
 
-            let mut best: Option<DriverMatch<'_>> = None;
-            for entry in &inf.hardware {
+            let mut best_by_inf: HashMap<usize, DriverMatch<'a>> = HashMap::new();
+            for (inf_index, entry_index) in locations {
+                let inf = &self.drivers[inf_index];
+                if !class_allowed(&inf.class, class_filter, class_exclude) {
+                    continue;
+                }
+                let entry = &inf.hardware[entry_index];
                 if !entry_allowed(entry, context) {
                     continue;
                 }
@@ -78,31 +113,46 @@ pub fn match_drivers<'a>(
                     continue;
                 };
                 let candidate = DriverMatch { inf, entry, rank };
-                if best
-                    .as_ref()
-                    .is_none_or(|current| compare_candidates(&candidate, current).is_lt())
-                {
-                    best = Some(candidate);
-                }
+                best_by_inf
+                    .entry(inf_index)
+                    .and_modify(|current| {
+                        if compare_candidates(&candidate, current).is_lt() {
+                            *current = candidate.clone();
+                        }
+                    })
+                    .or_insert(candidate);
             }
-            if let Some(candidate) = best {
-                candidates.push(candidate);
-            }
-        }
 
-        if !explicit_supplemental
-            && candidates
-                .iter()
-                .any(|candidate| !is_supplemental_class(&candidate.inf.class))
-        {
-            candidates.retain(|candidate| !is_supplemental_class(&candidate.inf.class));
+            let mut candidates: Vec<_> = best_by_inf.into_values().collect();
+            if !explicit_supplemental
+                && candidates
+                    .iter()
+                    .any(|candidate| !is_supplemental_class(&candidate.inf.class))
+            {
+                candidates.retain(|candidate| !is_supplemental_class(&candidate.inf.class));
+            }
+            candidates.sort_by(compare_candidates);
+            if !candidates.is_empty() {
+                results.push((device, candidates));
+            }
         }
-        candidates.sort_by(compare_candidates);
-        if !candidates.is_empty() {
-            results.push((device, candidates));
-        }
+        results
     }
-    results
+}
+
+pub fn match_drivers<'a>(
+    devices: &'a [HardwareInfo],
+    drivers: &'a [InfInfo],
+    context: &MatchContext,
+    class_filter: Option<&[String]>,
+    class_exclude: Option<&[String]>,
+) -> Vec<(&'a HardwareInfo, Vec<DriverMatch<'a>>)> {
+    DriverLookup::new(drivers).match_devices(
+        devices,
+        context,
+        class_filter,
+        class_exclude,
+    )
 }
 
 fn class_allowed(
