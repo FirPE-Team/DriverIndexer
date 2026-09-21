@@ -377,7 +377,7 @@ pub fn source_fingerprint_excluding(path: &Path, exclusions: &[String]) -> Resul
     if path.is_file() {
         let mut file = File::open(path)
             .with_context(|| format!("open source file {:?} for fingerprint", path))?;
-        let mut buffer = [0u8; 1024 * 1024];
+        let mut buffer = vec![0u8; 64 * 1024];
         loop {
             let count = file.read(&mut buffer)?;
             if count == 0 {
