@@ -1,6 +1,6 @@
 use crate::DEBUG;
 use crate::utils::console::{ConsoleType, write_console};
-use crate::utils::setupapi::SetupAPI;
+use crate::utils::setupapi::{InfHandle, SetupAPI};
 use crate::utils::utils::{
     check_catalog_signature, compare_version, format_bytes, is_whql_signature,
 };
@@ -520,8 +520,8 @@ impl InfInfo {
         loop {
             let field_count = SetupAPI::get_field_count(&manufacturer_context);
             if let Ok(base_name) = SetupAPI::get_string_field(&manufacturer_context, 1) {
-                // 添加基础节 (例如 "Realtek")
-                if seen_sections.insert(base_name.to_ascii_lowercase()) {
+                // An undecorated manufacturer entry selects the base models section.
+                if field_count < 2 && seen_sections.insert(base_name.to_ascii_lowercase()) {
                     candidate_sections.push(base_name.clone());
                 }
 
@@ -574,16 +574,7 @@ impl InfInfo {
                     .unwrap_or_else(|_| "Unknown Install Section".to_string());
 
                 let feature_score =
-                    SetupAPI::find_first_line(&handle_inf, &install_section, Some("FeatureScore"))
-                        .ok()
-                        .and_then(|ctx| SetupAPI::get_string_field(&ctx, 1).ok())
-                        .map(|s| {
-                            let s = s.trim().to_uppercase();
-                            // 解析十六进制: 0xFF -> FF
-                            let clean_str = s.trim_start_matches("0X");
-                            u8::from_str_radix(clean_str, 16).unwrap_or(0xFF)
-                        })
-                        .unwrap_or(0xFF); // 找不到行或解析失败时的默认值
+                    parse_feature_score(&handle_inf, &install_section, &arch, &os_version);
 
                 // Field 2: Main Hardware ID (如 "PCI\VEN_10EC&DEV_8168&SUBSYS_00008168&REV_00")
                 if let Ok(hw_id) = SetupAPI::get_string_field(&model_context, 2) {
@@ -701,6 +692,10 @@ fn parse_section_metadata(section_name: &str) -> (DriverArch, String) {
 
         // 尝试匹配架构
         match part.to_lowercase().as_str() {
+            "nt" => {
+                arch = DriverArch::Nt;
+                found_arch = true;
+            }
             "ntx86" => {
                 arch = DriverArch::NTx86;
                 found_arch = true;
@@ -737,6 +732,37 @@ fn parse_section_metadata(section_name: &str) -> (DriverArch, String) {
     (arch, os_version)
 }
 
+fn parse_feature_score(
+    handle: &InfHandle,
+    install_section: &str,
+    arch: &DriverArch,
+    os_version: &str,
+) -> u8 {
+    let arch_name = arch.clone().display();
+    let mut sections = Vec::new();
+    if !os_version.is_empty() {
+        sections.push(format!("{install_section}.{arch_name}.{os_version}"));
+        sections.push(format!("{install_section}.NT.{os_version}"));
+    }
+    sections.push(format!("{install_section}.{arch_name}"));
+    sections.push(format!("{install_section}.NT"));
+    sections.push(install_section.to_string());
+    sections.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+
+    sections
+        .iter()
+        .find_map(|section| {
+            SetupAPI::find_first_line(handle, section, Some("FeatureScore"))
+                .ok()
+                .and_then(|context| SetupAPI::get_string_field(&context, 1).ok())
+                .and_then(|value| {
+                    let normalized = value.trim().to_ascii_uppercase();
+                    u8::from_str_radix(normalized.trim_start_matches("0X"), 16).ok()
+                })
+        })
+        .unwrap_or(0xFF)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -755,6 +781,10 @@ mod tests {
         assert_eq!(
             parse_section_metadata("Vendor.NTamd64.10.0"),
             (DriverArch::NTamd64, "10.0".into())
+        );
+        assert_eq!(
+            parse_section_metadata("Vendor.NT.10.0"),
+            (DriverArch::Nt, "10.0".into())
         );
     }
 
