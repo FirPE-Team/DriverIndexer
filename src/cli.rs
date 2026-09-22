@@ -1,5 +1,7 @@
+use anyhow::{Result, anyhow};
 use clap::{Parser, ValueEnum};
 use rust_i18n::t;
+use std::path::Path;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
@@ -343,6 +345,91 @@ pub enum Command {
     },
 }
 
+/// Resolve package paths and pair wildcard indexes by package stem.
+pub(crate) fn resolve_package_index_pairs(
+    package_path: &Path,
+    index_path: Option<&Path>,
+) -> Result<Vec<(PathBuf, Option<PathBuf>)>> {
+    let is_wildcard = package_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.contains('*') || name.contains('?'));
+    if !is_wildcard {
+        return Ok(vec![(
+            package_path.to_path_buf(),
+            index_path.map(Path::to_path_buf),
+        )]);
+    }
+
+    let parent = package_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .ok_or_else(|| anyhow!("package wildcard has no parent directory"))?;
+    let pattern = package_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow!("package wildcard is not valid UTF-8"))?;
+    let mut packages = crate::utils::utils::get_file_list(parent, pattern)?;
+    packages.sort_by(|left, right| {
+        left.to_string_lossy()
+            .to_ascii_lowercase()
+            .cmp(&right.to_string_lossy().to_ascii_lowercase())
+    });
+    if packages.is_empty() {
+        return Err(anyhow!("No driver package was found in this directory"));
+    }
+
+    let indexes = match index_path {
+        None => Vec::new(),
+        Some(path) => {
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| anyhow!("index wildcard is not valid UTF-8"))?;
+            if name.contains('*') || name.contains('?') {
+                let parent = path
+                    .parent()
+                    .filter(|path| !path.as_os_str().is_empty())
+                    .ok_or_else(|| anyhow!("index wildcard has no parent directory"))?;
+                let mut paths = crate::utils::utils::get_file_list(parent, name)?;
+                paths.sort_by(|left, right| {
+                    left.to_string_lossy()
+                        .to_ascii_lowercase()
+                        .cmp(&right.to_string_lossy().to_ascii_lowercase())
+                });
+                paths
+            } else {
+                vec![path.to_path_buf()]
+            }
+        }
+    };
+
+    let explicit_single = index_path
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| !name.contains('*') && !name.contains('?'))
+        })
+        .map(Path::to_path_buf);
+
+    Ok(packages
+        .into_iter()
+        .map(|package| {
+            let index = explicit_single.clone().or_else(|| {
+                let stem = package.file_stem()?.to_string_lossy().to_ascii_lowercase();
+                indexes.iter().find_map(|candidate| {
+                    let candidate_stem = candidate
+                        .file_stem()?
+                        .to_string_lossy()
+                        .to_ascii_lowercase();
+                    (candidate_stem == format!("{stem}")).then(|| candidate.clone())
+                })
+            });
+            (package, index)
+        })
+        .collect())
+}
+
 /// 是否为有效的文件路径（不包括通配符）
 fn exist_file_parser(path: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(normalize_drive_root(path));
@@ -415,5 +502,32 @@ fn normalize_drive_root(s: &str) -> String {
         format!("{}\\", s)
     } else {
         s.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_package_index_pairs;
+    use std::fs;
+
+    #[test]
+    fn pairs_wildcard_indexes_by_package_stem() {
+        let root =
+            std::env::temp_dir().join(format!("driver-cli-pair-test-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("b.7z"), b"b").unwrap();
+        fs::write(root.join("a.7z"), b"a").unwrap();
+        fs::write(root.join("a.index"), b"a").unwrap();
+        fs::write(root.join("unrelated.index"), b"x").unwrap();
+
+        let pairs =
+            resolve_package_index_pairs(&root.join("*.7z"), Some(&root.join("*.index"))).unwrap();
+        assert_eq!(pairs.len(), 2);
+        assert_eq!(pairs[0].0.file_name().unwrap(), "a.7z");
+        assert_eq!(pairs[0].1.as_ref().unwrap().file_name().unwrap(), "a.index");
+        assert_eq!(pairs[1].0.file_name().unwrap(), "b.7z");
+        assert!(pairs[1].1.is_none());
+
+        fs::remove_dir_all(root).unwrap();
     }
 }

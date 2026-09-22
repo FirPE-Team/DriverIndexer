@@ -16,8 +16,8 @@ mod driver_index;
 mod driver_manager;
 mod driver_match;
 mod hardware;
-mod tests;
 mod temp_workspace;
+mod tests;
 mod utils;
 
 use crate::cli::Cli;
@@ -228,119 +228,71 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             }
 
             // 处理通配符
-            if let Some(driver_name) = driver_path.file_name() {
-                let driver_name = driver_name.to_string_lossy().to_string();
-                if driver_name.contains('*') || driver_name.contains('?') {
-                    let driver_list =
-                        get_file_list(&PathBuf::from(&driver_path.parent().unwrap()), &driver_name)
-                            .with_context(|| "Get driver package list failed")?;
-                    if driver_list.is_empty() {
-                        write_console(
-                            ConsoleType::Error,
-                            "No driver package was found in this directory",
-                        );
-                        return Err(anyhow!("No driver package was found in this directory"));
-                    }
+            if driver_path
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().contains(['*', '?']))
+            {
+                let package_pairs =
+                    cli::resolve_package_index_pairs(driver_path, index_path.as_deref())?;
 
-                    // 创建索引列表（无索引则使用None）
-                    let mut index_list: Vec<Option<PathBuf>> = Vec::new();
-                    if let Some(index_path) = &index_path {
-                        let index_path_buf = PathBuf::from(index_path);
-                        let index_name = index_path_buf.file_name().unwrap().to_str().unwrap();
-                        if index_name.contains('*') || index_name.contains('?') {
-                            for item in get_file_list(
-                                &PathBuf::from(&index_path_buf.parent().unwrap()),
-                                index_name,
-                            )
-                            .with_context(|| "Get index file list failed")?
-                            {
-                                index_list.push(Some(item));
-                            }
-                        } else {
-                            index_list.push(Some(PathBuf::from(index_path)));
-                        }
+                for (driver_path_item, index) in package_pairs {
+                    write_console(
+                        ConsoleType::Info,
+                        &format!(
+                            "{}: {}",
+                            t!("create-index-info"),
+                            driver_path_item.to_string_lossy()
+                        ),
+                    );
+
+                    let config_path = if let Some(index) = index {
+                        index
                     } else {
-                        // 为每个驱动包生成默认索引路径
-                        for driver_item in &driver_list {
-                            let config_name = format!(
-                                "{}.index",
-                                driver_item
-                                    .file_stem()
-                                    .unwrap_or("driver".as_ref())
-                                    .to_string_lossy()
-                            );
-                            let config_path = driver_item
-                                .parent()
-                                .unwrap_or(driver_item)
-                                .join(config_name);
-                            index_list.push(Some(config_path));
-                        }
-                    }
-
-                    let mut index_iter = index_list.iter();
-
-                    // 遍历驱动包
-                    for driver_path_item in driver_list.iter() {
-                        let index = index_iter.next().unwrap().clone();
-
-                        write_console(
-                            ConsoleType::Info,
-                            &format!(
-                                "{}: {}",
-                                t!("create-index-info"),
-                                driver_path_item.to_string_lossy()
-                            ),
-                        );
-
-                        let config_path = if let Some(index) = index {
-                            index
-                        } else {
-                            let config_name = format!(
-                                "{}.index",
-                                driver_path_item
-                                    .file_stem()
-                                    .unwrap_or("driver".as_ref())
-                                    .to_string_lossy()
-                            );
+                        let config_name = format!(
+                            "{}.index",
                             driver_path_item
-                                .parent()
-                                .unwrap_or(driver_path_item)
-                                .join(config_name)
-                        };
+                                .file_stem()
+                                .ok_or_else(|| anyhow!("driver package has no file name"))?
+                                .to_string_lossy()
+                        );
+                        driver_path_item
+                            .parent()
+                            .ok_or_else(|| anyhow!("driver package has no parent directory"))?
+                            .join(config_name)
+                    };
 
-                        match command::create_index(
-                            driver_path_item,
-                            password.as_deref(),
-                            &config_path,
-                            *compress,
-                        ) {
-                            Ok((total, success_count, error_count, blank_count)) => {
-                                // 打印统计信息
-                                write_console(
-                                    ConsoleType::Info,
-                                    &t!(
-                                        "total-info",
-                                        total = total,
-                                        success = success_count,
-                                        error = error_count,
-                                        blank = blank_count,
-                                    ),
-                                );
-                                write_console(
-                                    ConsoleType::Success,
-                                    &t!(
-                                        "save-info",
-                                        path = config_path.to_string_lossy().to_string()
-                                    ),
-                                );
-                            }
-                            Err(e) => {
-                                write_console(ConsoleType::Error, &e.to_string());
-                            }
+                    match command::create_index(
+                        &driver_path_item,
+                        password.as_deref(),
+                        &config_path,
+                        *compress,
+                    ) {
+                        Ok((total, success_count, error_count, blank_count)) => {
+                            // 打印统计信息
+                            write_console(
+                                ConsoleType::Info,
+                                &t!(
+                                    "total-info",
+                                    total = total,
+                                    success = success_count,
+                                    error = error_count,
+                                    blank = blank_count,
+                                ),
+                            );
+                            write_console(
+                                ConsoleType::Success,
+                                &t!(
+                                    "save-info",
+                                    path = config_path.to_string_lossy().to_string()
+                                ),
+                            );
+                        }
+                        Err(e) => {
+                            write_console(ConsoleType::Error, &e.to_string());
                         }
                     }
-                    return Ok(());
                 }
+                return Ok(());
             }
 
             // 无通配符
@@ -444,80 +396,43 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             let driver_loader = DriverInstaller::new()?;
 
             // 处理通配符
-            if let Some(driver_name) = driver_path.file_name() {
-                let driver_name = driver_name.to_string_lossy().to_string();
-                if driver_name.contains('*') || driver_name.contains('?') {
-                    let driver_list =
-                        get_file_list(&PathBuf::from(&driver_path.parent().unwrap()), &driver_name)
-                            .with_context(|| "Get driver package list failed")?;
-                    if driver_list.is_empty() {
-                        write_console(
-                            ConsoleType::Error,
-                            "No driver package was found in this directory",
-                        );
-                        return Err(anyhow!("No driver package was found in this directory"));
-                    }
+            if driver_path
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().contains(['*', '?']))
+            {
+                let package_pairs =
+                    cli::resolve_package_index_pairs(driver_path, index_path.as_deref())?;
 
-                    // 创建索引列表（无索引则使用None）
-                    let mut index_list: Vec<Option<PathBuf>> = Vec::new();
-                    if let Some(index_path) = &index_path {
-                        let index_name = index_path.file_name().unwrap().to_str().unwrap();
-                        if index_name.contains('*') || index_name.contains('?') {
-                            for item in get_file_list(
-                                &PathBuf::from(&index_path.parent().unwrap()),
-                                index_name,
-                            )
-                            .with_context(|| "Get driver package list failed")?
-                            {
-                                index_list.push(Some(item));
-                            }
-                        } else {
-                            index_list.push(Some(PathBuf::from(index_path)));
-                        }
-                    } else {
-                        index_list.append(
-                            &mut driver_list
-                                .iter()
-                                .map(|_item| None)
-                                .collect::<Vec<Option<PathBuf>>>(),
-                        );
-                    }
+                for (drive_path_item, index) in package_pairs {
+                    let class = class.clone();
 
-                    let mut index_iter = index_list.iter();
+                    write_console(
+                        ConsoleType::Info,
+                        &format!(
+                            "{}: {}",
+                            t!("driver-install-info"),
+                            drive_path_item.to_string_lossy()
+                        ),
+                    );
 
-                    // 遍历驱动包
-                    for drive_path_item in driver_list.iter() {
-                        let index = index_iter.next().unwrap().clone();
-                        let class = class.clone();
-
-                        write_console(
-                            ConsoleType::Info,
-                            &format!(
-                                "{}: {}",
-                                t!("driver-install-info"),
-                                drive_path_item.to_string_lossy()
-                            ),
-                        );
-
-                        match driver_loader.install_driver(&InstallOptions {
-                            driver_pack_path: drive_path_item.clone(),
-                            password: password.clone(),
-                            config: index,
-                            skip_verify: *skip_verify,
-                            missing_only: *missing_only,
-                            class: class.clone(),
-                            exclude_class: exclude_class.clone(),
-                            user_extract_path: extract_path.clone(),
-                            force: *force,
-                        }) {
-                            Ok(_) => {}
-                            Err(e) => {
-                                write_console(ConsoleType::Error, &e.to_string());
-                            }
+                    match driver_loader.install_driver(&InstallOptions {
+                        driver_pack_path: drive_path_item.clone(),
+                        password: password.clone(),
+                        config: index,
+                        skip_verify: *skip_verify,
+                        missing_only: *missing_only,
+                        class: class.clone(),
+                        exclude_class: exclude_class.clone(),
+                        user_extract_path: extract_path.clone(),
+                        force: *force,
+                    }) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            write_console(ConsoleType::Error, &e.to_string());
                         }
                     }
-                    return Ok(());
                 }
+                return Ok(());
             }
 
             // 无通配符
