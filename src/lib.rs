@@ -17,7 +17,6 @@ use dotenvy_macro::dotenv;
 use rust_embed::Embed;
 use std::env::temp_dir;
 use std::path::PathBuf;
-use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
 
 use crate::utils::utils::get_temp_name;
@@ -39,7 +38,6 @@ pub struct Asset;
 
 pub static SECRET_KEY: &str = dotenv!("SECRET_KEY");
 pub static DEBUG: AtomicBool = AtomicBool::new(false);
-pub static LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
 
 lazy_static! {
     pub static ref TEMP_PATH: PathBuf = temp_dir().join(get_temp_name(".tmp", "", 6));

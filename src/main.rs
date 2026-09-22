@@ -24,10 +24,11 @@ use crate::cli::Command;
 use crate::command::{DriverInstaller, InstallOptions, check_if_bundled};
 use crate::driver_index::DriverIndex;
 use crate::driver_manager::DriverManger;
-use crate::utils::console::{ConsoleType, write_console};
+use crate::utils::console::{ConsoleType, write_console, write_plain};
 use crate::utils::setupapi::SetupAPI;
 use crate::utils::utils::{
-    decrypt_password, encrypt_password, get_file_list, get_temp_name, launched_from_explorer,
+    decrypt_password, encrypt_password, get_file_list, get_temp_name, init_log_file,
+    launched_from_explorer,
 };
 use anyhow::{Context, anyhow};
 use clap::Parser;
@@ -38,7 +39,6 @@ use rust_i18n::{set_locale, t};
 use std::env::temp_dir;
 use std::fs::create_dir_all;
 use std::path::PathBuf;
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::sleep;
 use std::time::Duration;
@@ -67,8 +67,6 @@ pub struct Asset;
 pub static SECRET_KEY: &str = dotenv!("SECRET_KEY");
 
 static DEBUG: AtomicBool = AtomicBool::new(false);
-static LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
-
 lazy_static! {
     pub static ref TEMP_PATH: PathBuf = temp_dir().join(get_temp_name(".tmp", "", 6));
 }
@@ -125,7 +123,7 @@ fn main() {
 
     // 判断是否从资源管理器启动
     if launched_from_explorer() && env::args().len() == 1 {
-        println!("{}", t!("cmdline_tool_tips"));
+        write_plain(&t!("cmdline_tool_tips"));
         sleep(Duration::from_secs(5));
         process::exit(exitcode::OK);
     }
@@ -136,9 +134,10 @@ fn main() {
     if cli.debug {
         DEBUG.store(true, Ordering::Relaxed);
     }
-    // 设置日志文件路径
-    if let Some(log_path) = &cli.log_path {
-        LOG_PATH.set(PathBuf::from(log_path)).ok();
+    // 初始化日志文件
+    if let Err(e) = init_log_file(cli.log_path.as_deref()) {
+        write_console(ConsoleType::Error, &e.to_string());
+        process::exit(1);
     }
     // 设置语言
     if let Some(language) = &cli.language {
@@ -395,7 +394,8 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         Command::Info { index_path } => {
             let driver_index =
                 DriverIndex::from_path(index_path).with_context(|| "Parse driver index failed")?;
-            println!("{}", driver_index.get_driver_index_info());
+            let info = driver_index.get_driver_index_info();
+            write_plain(&info);
             Ok(())
         }
 
@@ -924,7 +924,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
         // 加密密码子命令
         Command::Encrypt { text } => {
             let encrypted = encrypt_password(text);
-            println!("enc:{}", encrypted);
+            write_plain(&format!("enc:{encrypted}"));
             Ok(())
         }
     }

@@ -11,10 +11,11 @@ use std::cmp::Ordering;
 use std::ffi::OsString;
 use std::ffi::c_void;
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, BufWriter, Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::iter::repeat_with;
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::{env, fs, io, ptr};
 use walkdir::WalkDir;
 use windows::Win32::Foundation::{FILETIME, HANDLE, HWND, MAX_PATH, SYSTEMTIME};
@@ -84,17 +85,50 @@ pub fn write_embed_file(file_path: &str, out_path: &Path) -> Result<()> {
 /// # 返回值
 /// - `Ok(())`: 写入成功
 /// - `Err(...)`：失败则返回错误
-pub fn write_log(log_path: &Path, content: &str) -> Result<()> {
-    let file = OpenOptions::new()
-        .create(true) // 如果不存在则创建
-        .append(true) // 追加模式
-        .open(log_path)
-        .with_context(|| format!("Open log file failed: {}", log_path.display()))?;
-    let datetime = Local::now().format("%Y-%m-%d %T").to_string();
+static LOG_FILE: OnceLock<Mutex<File>> = OnceLock::new();
 
-    let mut writer = BufWriter::new(file);
-    writeln!(writer, "{} {}", datetime, content)
-        .with_context(|| format!("Write log file failed: {}", log_path.display()))?;
+/// 初始化日志文件。文件只打开一次，后续写入由互斥锁串行化。
+pub fn init_log_file(path: Option<&Path>) -> Result<()> {
+    let Some(path) = path else {
+        return Ok(());
+    };
+
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Create log directory failed: {}", parent.display()))?;
+    }
+
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .with_context(|| format!("Open log file failed: {}", path.display()))?;
+    LOG_FILE
+        .set(Mutex::new(file))
+        .map_err(|_| anyhow!("Log file has already been initialized"))?;
+    Ok(())
+}
+
+/// 向已初始化的日志文件写入一条结构化日志。
+pub fn write_log(level: &str, content: &str) -> Result<()> {
+    let Some(file) = LOG_FILE.get() else {
+        return Ok(());
+    };
+    let timestamp = Local::now().format("%Y-%m-%d %H:%M:%S");
+    let mut file = file
+        .lock()
+        .map_err(|_| anyhow!("Log file lock is poisoned"))?;
+    for line in content.lines() {
+        writeln!(file, "[{timestamp}] [{level}] {line}")
+            .with_context(|| "Write log file failed".to_string())?;
+    }
+    if content.is_empty() {
+        writeln!(file, "[{timestamp}] [{level}]")
+            .with_context(|| "Write log file failed".to_string())?;
+    }
     Ok(())
 }
 

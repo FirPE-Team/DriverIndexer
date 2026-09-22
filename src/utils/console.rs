@@ -1,4 +1,3 @@
-use crate::LOG_PATH;
 use crate::utils::utils::write_log;
 use console::style;
 use rust_i18n::t;
@@ -41,16 +40,18 @@ pub fn write_console(consoleType: ConsoleType, message: &str) {
         println!("  {}      {}", title, message);
     }
 
-    // 写入日志文件
-    if let Some(log_path) = LOG_PATH.get() {
-        write_log(
-            log_path,
-            &format!(
-                "{}  {}",
-                console::strip_ansi_codes(&title.to_string()),
-                message
-            ),
-        )
-        .ok();
-    }
+    let level = match consoleType {
+        ConsoleType::Info => "INFO",
+        ConsoleType::Success => "SUCCESS",
+        ConsoleType::Warning => "WARNING",
+        ConsoleType::Error => "ERROR",
+        ConsoleType::Debug => "DEBUG",
+    };
+    let _ = write_log(level, message);
+}
+
+/// 输出普通文本，并在启用日志时记录为 OUTPUT。
+pub fn write_plain(message: &str) {
+    println!("{message}");
+    let _ = write_log("OUTPUT", message);
 }

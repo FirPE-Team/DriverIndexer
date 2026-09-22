@@ -1,6 +1,6 @@
 use crate::driver_index::InfInfo;
 use crate::hardware::enumerate_hardware;
-use crate::utils::console::{ConsoleType, write_console};
+use crate::utils::console::{ConsoleType, write_console, write_plain};
 use crate::utils::drvstore::DriverStore;
 use crate::utils::setupapi::SetupAPI;
 use crate::utils::sevenzip::SevenZip;
@@ -337,7 +337,7 @@ impl DriverManger {
                 ));
                 result.push('\n');
 
-                println!("{}", result);
+                write_plain(&result);
             }
         }
         self.driver_store
