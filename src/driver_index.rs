@@ -1008,4 +1008,22 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
         assert_eq!(before, after);
     }
+
+    #[test]
+    fn file_fingerprint_detects_content_changes() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "driver-source-file-test-{}-{nonce}.bin",
+            std::process::id()
+        ));
+        std::fs::write(&path, b"before").unwrap();
+        let before = source_fingerprint(&path).unwrap();
+        std::fs::write(&path, b"after").unwrap();
+        let after = source_fingerprint(&path).unwrap();
+        std::fs::remove_file(path).unwrap();
+        assert_ne!(before, after);
+    }
 }
