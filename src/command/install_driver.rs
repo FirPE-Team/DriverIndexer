@@ -1,6 +1,6 @@
 use crate::DEBUG;
 use crate::command::check_if_bundled;
-use crate::driver_index::{DriverArch, DriverIndex, HardwareEntry, InfInfo};
+use crate::driver_index::{CatalogSignatureCache, DriverArch, DriverIndex, HardwareEntry, InfInfo};
 use crate::driver_match::{DriverLookup, MatchContext, match_drivers};
 use crate::hardware::{HardwareInfo, enumerate_hardware, update_driver_for_plug_and_play_devices};
 use crate::temp_workspace::TempWorkspace;
@@ -654,10 +654,12 @@ impl DriverInstaller {
     ) -> Result<DriverIndex> {
         let drivers_path = if driver_pack_path.is_file() {
             // 解压全部 INF 文件
-            if let Err(_e) =
-                self.zip
-                    .extract_files_from_path(driver_pack_path, password, "*.inf", extract_path)
-            {
+            if let Err(_e) = self.zip.extract_files_from_paths(
+                driver_pack_path,
+                password,
+                &["*.inf", "*.cat"],
+                extract_path,
+            ) {
                 return Err(anyhow!(t!("driver-unzip-failed")));
             }
             extract_path
@@ -665,18 +667,12 @@ impl DriverInstaller {
             driver_pack_path
         };
 
-        // 解压全部 CAT 文件
-        if driver_pack_path.is_file() {
-            let _ =
-                self.zip
-                    .extract_files_from_path(driver_pack_path, password, "*.cat", extract_path);
-        }
-
         // 列出INF文件
-        let inf_list = get_file_list(drivers_path, "*.inf")?;
+        let mut inf_list = get_file_list(drivers_path, "*.inf")?;
         if inf_list.is_empty() {
             return Err(anyhow!(t!("no-driver-package")));
         }
+        inf_list.sort_by_key(|path| path.to_string_lossy().to_ascii_lowercase());
 
         // 创建线程池（池大小以可用 CPU 核心数为准）
         let pool = ThreadPool::new(num_cpus::get());
@@ -688,6 +684,7 @@ impl DriverInstaller {
 
         let success_count = Arc::new(AtomicI32::new(0));
         let error_count = Arc::new(AtomicI32::new(0));
+        let catalog_cache = Arc::new(CatalogSignatureCache::new());
 
         // 遍历INF文件
         for inf_file in inf_list.into_iter() {
@@ -695,11 +692,16 @@ impl DriverInstaller {
             let base_path = Arc::clone(&base_path);
             let success_count = Arc::clone(&success_count);
             let error_count = Arc::clone(&error_count);
+            let catalog_cache = Arc::clone(&catalog_cache);
             let workspace_prefix = workspace_prefix.clone();
 
             pool.execute(move || {
                 // 解析INF文件，解析失败的INF将自动跳过
-                match InfInfo::parse_inf(&base_path, &inf_file) {
+                match InfInfo::parse_inf_with_catalog_cache(
+                    &base_path,
+                    &inf_file,
+                    Some(&catalog_cache),
+                ) {
                     Ok(inf_info) => {
                         // 增加成功计数
                         success_count.fetch_add(1, Ordering::Relaxed);

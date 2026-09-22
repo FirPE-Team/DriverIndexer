@@ -1,4 +1,6 @@
-use crate::driver_index::{DriverIndex, InfInfo, source_fingerprint_excluding};
+use crate::driver_index::{
+    CatalogSignatureCache, DriverIndex, InfInfo, source_fingerprint_excluding,
+};
 use crate::temp_workspace::TempWorkspace;
 use crate::utils::console::{ConsoleType, write_console};
 use crate::utils::sevenzip::SevenZip;
@@ -42,7 +44,7 @@ pub fn create_index(
     // INF文件父路径
     let inf_parent_path;
     // INF文件列表
-    let inf_list;
+    let mut inf_list;
     // 保存索引路径
     let index_path;
 
@@ -65,14 +67,15 @@ pub fn create_index(
         );
 
         // 解压全部INF文件
-        if let Err(e) = zip.extract_files_from_path(drive_path, password, "*.inf", &inf_parent_path)
-        {
+        if let Err(e) = zip.extract_files_from_paths(
+            drive_path,
+            password,
+            &["*.inf", "*.cat"],
+            &inf_parent_path,
+        ) {
             drop(zip);
             return Err(anyhow!("{}: {}", t!("driver-unzip-failed"), e));
         }
-
-        // 解压全部 CAT 文件
-        let _ = zip.extract_files_from_path(drive_path, password, "*.cat", &inf_parent_path);
 
         // 从解压目录中获取INF文件列表
         inf_list =
@@ -89,6 +92,7 @@ pub fn create_index(
     if inf_list.is_empty() {
         return Err(anyhow!(t!("no-inf-find")));
     }
+    inf_list.sort_by_key(|path| path.to_string_lossy().to_ascii_lowercase());
 
     // 创建线程池（池大小以可用 CPU 核心数为准）
     let pool = ThreadPool::new(num_cpus::get());
@@ -99,6 +103,7 @@ pub fn create_index(
     let success_count = Arc::new(AtomicI32::new(0));
     let error_count = Arc::new(AtomicI32::new(0));
     let blank_count = Arc::new(AtomicI32::new(0));
+    let catalog_cache = Arc::new(CatalogSignatureCache::new());
 
     // 遍历INF文件
     for item in inf_list.clone() {
@@ -107,11 +112,12 @@ pub fn create_index(
         let success_count = Arc::clone(&success_count);
         let error_count = Arc::clone(&error_count);
         let blank_count = Arc::clone(&blank_count);
+        let catalog_cache = Arc::clone(&catalog_cache);
         let workspace_prefix = workspace_prefix.clone();
 
         // 多线程解析INF文件
         pool.execute(move || {
-            match InfInfo::parse_inf(&base_path, &item) {
+            match InfInfo::parse_inf_with_catalog_cache(&base_path, &item, Some(&catalog_cache)) {
                 Ok(info) => {
                     // 判断inf文件是否包含硬件信息
                     if info.hardware.is_empty() {

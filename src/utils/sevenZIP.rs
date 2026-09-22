@@ -115,14 +115,26 @@ impl SevenZip {
         extract_path: &str,
         out_path: &Path,
     ) -> Result<()> {
+        self.extract_files_from_paths(archive_path, password, &[extract_path], out_path)
+    }
+
+    pub fn extract_files_from_paths(
+        &self,
+        archive_path: &Path,
+        password: Option<&str>,
+        extract_paths: &[&str],
+        out_path: &Path,
+    ) -> Result<()> {
         let mut cmd = Command::new(&self.zip_program);
         cmd.arg("x")
             .arg("-r")
             .arg(archive_path.to_string_lossy().to_string());
 
         // 当 extract_path 不为空时添加该参数
-        if !extract_path.is_empty() {
-            cmd.arg(extract_path);
+        for extract_path in extract_paths {
+            if !extract_path.is_empty() {
+                cmd.arg(extract_path);
+            }
         }
 
         cmd.arg("-y")

@@ -11,10 +11,12 @@ use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
 use walkdir::WalkDir;
 
@@ -156,6 +158,53 @@ pub struct HardwareEntry {
     pub feature_score: u8,
 }
 
+#[derive(Debug, Default)]
+pub struct CatalogSignatureCache {
+    entries: Mutex<HashMap<PathBuf, (u64, u64, u8)>>,
+}
+
+impl CatalogSignatureCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    fn get_or_check(&self, path: &Path) -> u8 {
+        let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        let metadata = match canonical.metadata() {
+            Ok(metadata) => metadata,
+            Err(_) => return 0xFF,
+        };
+        let modified = metadata
+            .modified()
+            .ok()
+            .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+            .map_or(0, |value| value.as_secs());
+        let key = (canonical, metadata.len(), modified);
+
+        let mut entries = match self.entries.lock() {
+            Ok(entries) => entries,
+            Err(_) => return 0xFF,
+        };
+        if let Some((size, timestamp, signature)) = entries.get(&key.0)
+            && *size == key.1
+            && *timestamp == key.2
+        {
+            return *signature;
+        }
+        let signature = if check_catalog_signature(&key.0) {
+            if is_whql_signature(&key.0) {
+                0x00
+            } else {
+                0x05
+            }
+        } else {
+            0x0E
+        };
+        entries.insert(key.0, (key.1, key.2, signature));
+        signature
+    }
+}
+
 /// 系统架构
 /// https://learn.microsoft.com/zh-cn/windows-hardware/drivers/install/creating-inf-files-for-multiple-platforms-and-operating-systems
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Encode, Decode)]
@@ -247,7 +296,7 @@ impl DriverIndex {
             "{:<width$} {}:{}\n",
             "Source Fingerprint:",
             self.source_fingerprint.algorithm,
-            &self.source_fingerprint.value,
+            self.source_fingerprint.value,
             width = label_w
         ));
 
@@ -332,9 +381,7 @@ impl DriverIndex {
         config_file.seek(SeekFrom::Start(0))?;
 
         let content = if magic == [0x28, 0xB5, 0x2F, 0xFD] {
-            let decompressed =
-                zstd::decode_all(&config_file).with_context(|| "Decompress config failed")?;
-            decompressed
+            zstd::decode_all(&config_file).with_context(|| "Decompress config failed")?
         } else {
             let mut content = Vec::new();
             config_file
@@ -541,6 +588,14 @@ impl InfInfo {
     /// # 返回值
     /// - `Ok(InfInfo)`: 解析后的INF驱动信息
     pub fn parse_inf(base_path: &Path, inf_file: &Path) -> Result<InfInfo> {
+        Self::parse_inf_with_catalog_cache(base_path, inf_file, None)
+    }
+
+    pub fn parse_inf_with_catalog_cache(
+        base_path: &Path,
+        inf_file: &Path,
+        catalog_cache: Option<&CatalogSignatureCache>,
+    ) -> Result<InfInfo> {
         let handle_inf = SetupAPI::open_inf_file(inf_file)
             .with_context(|| "Open inf file failed".to_string())?;
 
@@ -592,16 +647,19 @@ impl InfInfo {
             {
                 let catalog_file = inf_file.parent().unwrap().join(filename);
                 if catalog_file.exists() {
-                    signature = if check_catalog_signature(&catalog_file) {
-                        // 检查是否包含 WHQL 签名
-                        if is_whql_signature(&catalog_file) {
-                            0x00
-                        } else {
-                            0x05
-                        }
-                    } else {
-                        0x0E
-                    };
+                    signature = catalog_cache
+                        .map(|cache| cache.get_or_check(&catalog_file))
+                        .unwrap_or_else(|| {
+                            if check_catalog_signature(&catalog_file) {
+                                if is_whql_signature(&catalog_file) {
+                                    0x00
+                                } else {
+                                    0x05
+                                }
+                            } else {
+                                0x0E
+                            }
+                        });
                 }
                 break;
             }

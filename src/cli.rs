@@ -422,7 +422,7 @@ pub(crate) fn resolve_package_index_pairs(
                         .file_stem()?
                         .to_string_lossy()
                         .to_ascii_lowercase();
-                    (candidate_stem == format!("{stem}")).then(|| candidate.clone())
+                    (candidate_stem == stem).then(|| candidate.clone())
                 })
             });
             (package, index)
