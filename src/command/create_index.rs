@@ -201,6 +201,7 @@ pub fn create_index(
         .with_context(|| "create driver source fingerprint failed")?;
     let mut config = DriverIndex::new(size, timestamp, crc32, fingerprint, inf_info_list);
     config.source_exclusions = source_exclusions;
+    config.source_fingerprint.exclusions = config.source_exclusions.clone();
 
     let data = if compress {
         // 压缩索引配置文件

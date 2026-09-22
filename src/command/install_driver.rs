@@ -755,7 +755,7 @@ impl DriverInstaller {
             })?
             .as_secs();
 
-        Ok(DriverIndex::new(
+        let mut index = DriverIndex::new(
             driver_pack_path
                 .metadata()
                 .with_context(|| "Get driver pack path metadata failed")?
@@ -764,7 +764,13 @@ impl DriverInstaller {
             None,
             crate::driver_index::source_fingerprint(driver_pack_path)?,
             inf_info_list,
-        ))
+        );
+        index.source_fingerprint.source_type = if driver_pack_path.is_file() {
+            crate::driver_index::SourceType::File
+        } else {
+            crate::driver_index::SourceType::Directory
+        };
+        Ok(index)
     }
 }
 

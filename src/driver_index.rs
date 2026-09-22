@@ -18,8 +18,9 @@ use std::path::Path;
 use std::time::UNIX_EPOCH;
 use walkdir::WalkDir;
 
-pub const DRIVER_INDEX_FORMAT_VERSION: u16 = 2;
-pub const MATCHING_POLICY_VERSION: u16 = 1;
+pub const DRIVER_INDEX_FORMAT_VERSION: u16 = 3;
+pub const MATCHING_POLICY_VERSION: u16 = 2;
+pub const INF_PARSER_VERSION: u16 = 2;
 
 /// Normalize a Plug and Play identifier for case-insensitive matching.
 pub fn normalize_hardware_id(id: &str) -> Option<String> {
@@ -72,6 +73,8 @@ pub struct DriverIndex {
     /// Version of the candidate ranking policy used to create this index.
     #[serde(default)]
     pub matching_policy_version: u16,
+    /// Version of the INF parser that produced this index.
+    pub parser_version: u16,
     /// 索引文件大小（字节）
     pub size: u64,
     /// 索引文件修改时间戳（Unix 时间戳）
@@ -79,13 +82,28 @@ pub struct DriverIndex {
     /// 索引文件CRC32校验值
     pub crc32: Option<u32>,
     /// Fingerprint of the source package or directory manifest.
-    #[serde(default)]
-    pub source_fingerprint: String,
+    pub source_fingerprint: SourceFingerprint,
     /// Generated files below a source directory that are omitted from its manifest.
     #[serde(default)]
     pub source_exclusions: Vec<String>,
     /// 索引数据（INF驱动信息列表）
     pub drivers: Vec<InfInfo>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Encode, Decode)]
+pub struct SourceFingerprint {
+    pub algorithm: String,
+    pub value: String,
+    pub source_type: SourceType,
+    pub size: u64,
+    pub timestamp: u64,
+    pub exclusions: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Encode, Decode)]
+pub enum SourceType {
+    File,
+    Directory,
 }
 
 /// INF驱动信息
@@ -174,10 +192,22 @@ impl DriverIndex {
         Self {
             format_version: DRIVER_INDEX_FORMAT_VERSION,
             matching_policy_version: MATCHING_POLICY_VERSION,
+            parser_version: INF_PARSER_VERSION,
             size,
             timestamp,
             crc32,
-            source_fingerprint,
+            source_fingerprint: SourceFingerprint {
+                algorithm: "sha256".into(),
+                value: source_fingerprint,
+                source_type: if crc32.is_some() {
+                    SourceType::File
+                } else {
+                    SourceType::Directory
+                },
+                size,
+                timestamp,
+                exclusions: Vec::new(),
+            },
             source_exclusions: Vec::new(),
             drivers,
         }
@@ -205,6 +235,19 @@ impl DriverIndex {
             "{:<width$} {}\n",
             "Matching Policy:",
             self.matching_policy_version,
+            width = label_w
+        ));
+        result.push_str(&format!(
+            "{:<width$} {}\n",
+            "Parser Version:",
+            self.parser_version,
+            width = label_w
+        ));
+        result.push_str(&format!(
+            "{:<width$} {}:{}\n",
+            "Source Fingerprint:",
+            self.source_fingerprint.algorithm,
+            &self.source_fingerprint.value,
             width = label_w
         ));
 
@@ -288,18 +331,31 @@ impl DriverIndex {
         }
         config_file.seek(SeekFrom::Start(0))?;
 
-        let index: DriverIndex = if magic == [0x28, 0xB5, 0x2F, 0xFD] {
+        let content = if magic == [0x28, 0xB5, 0x2F, 0xFD] {
             let decompressed =
                 zstd::decode_all(&config_file).with_context(|| "Decompress config failed")?;
-            serde_json::from_slice(&decompressed)
-                .with_context(|| format!("parse index file {:?}", path))
+            decompressed
         } else {
-            let mut content = String::new();
+            let mut content = Vec::new();
             config_file
-                .read_to_string(&mut content)
+                .read_to_end(&mut content)
                 .with_context(|| format!("read index file {:?}", path))?;
-            serde_json::from_str(&content).with_context(|| format!("parse index file {:?}", path))
-        }?;
+            content
+        };
+        let raw: serde_json::Value = serde_json::from_slice(&content)
+            .with_context(|| format!("parse index file {:?}", path))?;
+        let format_version = raw
+            .get("format_version")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or_default();
+        if format_version != u64::from(DRIVER_INDEX_FORMAT_VERSION) {
+            return Err(anyhow!(
+                "unsupported driver index format {}, rebuild the index",
+                format_version
+            ));
+        }
+        let index: DriverIndex =
+            serde_json::from_value(raw).with_context(|| format!("parse index file {:?}", path))?;
         index.validate_format()?;
         Ok(index)
     }
@@ -317,7 +373,14 @@ impl DriverIndex {
                 self.matching_policy_version
             ));
         }
-        if self.source_fingerprint.is_empty() {
+        if self.parser_version != INF_PARSER_VERSION {
+            return Err(anyhow!(
+                "unsupported INF parser version {}, rebuild the index",
+                self.parser_version
+            ));
+        }
+        if self.source_fingerprint.value.is_empty() || self.source_fingerprint.algorithm != "sha256"
+        {
             return Err(anyhow!(
                 "driver index has no source fingerprint, rebuild the index"
             ));
@@ -379,24 +442,17 @@ impl DriverIndex {
 
         // Metadata is a fast path for regular files. The fingerprint remains the
         // authoritative check whenever metadata changed or the source is a directory.
-        if driver_pack_path.is_file()
-            && driver_size == self.size
-            && (timestamp as i64 - self.timestamp as i64).abs() <= 2
-        {
-            return Ok(());
-        }
-
         let fingerprint = source_fingerprint_excluding(driver_pack_path, &self.source_exclusions)?;
         if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
             write_console(
                 ConsoleType::Debug,
                 &format!(
                     "driver fingerprint: {}, config fingerprint: {}",
-                    fingerprint, self.source_fingerprint
+                    fingerprint, self.source_fingerprint.value
                 ),
             );
         }
-        if fingerprint != self.source_fingerprint {
+        if fingerprint != self.source_fingerprint.value {
             return Err(anyhow!("driver pack fingerprint not match"));
         }
         Ok(())
@@ -845,6 +901,19 @@ mod tests {
         let mut index = DriverIndex::new(0, 0, None, "sha256:test".into(), Vec::new());
         index.format_version = 0;
         assert!(index.validate_format().is_err());
+    }
+
+    #[test]
+    fn rejects_v2_index_file_with_rebuild_error() {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("driver-index-v2-{nonce}.index"));
+        std::fs::write(&path, br#"{"format_version":2}"#).unwrap();
+        let error = DriverIndex::from_path(&path).unwrap_err().to_string();
+        std::fs::remove_file(path).unwrap();
+        assert!(error.contains("rebuild the index"));
     }
 
     #[test]
