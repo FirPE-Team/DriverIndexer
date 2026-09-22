@@ -59,6 +59,12 @@ pub struct InstallSummary {
     pub attempts: usize,
 }
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct DeviceKey {
+    instance: String,
+    primary_hwid: String,
+}
+
 #[derive(Default)]
 struct ExtractionCache {
     entries: Mutex<HashMap<ExtractionKey, ExtractionState>>,
@@ -221,10 +227,10 @@ impl DriverInstaller {
             }
         };
 
-        let mut total_list: Vec<HardwareInfo> = Vec::new();
         let driver_lookup = DriverLookup::new(&config.drivers);
         let match_context = current_match_context();
         let extraction_cache = Arc::new(ExtractionCache::default());
+        let mut processed_instances = HashSet::new();
 
         // 3次匹配，避免部分驱动安装不全
         let mut summary = InstallSummary::default();
@@ -237,38 +243,61 @@ impl DriverInstaller {
             }
 
             // 扫描以发现新的硬件
-            SetupAPI::rescan();
+            let rescan_succeeded = SetupAPI::rescan();
+            if !rescan_succeeded {
+                write_console(
+                    ConsoleType::Warning,
+                    &format!("device rescan failed on pass {}", scan_count + 1),
+                );
+            }
 
             // 获取硬件信息
             if DEBUG.load(Ordering::Relaxed) {
                 write_console(ConsoleType::Debug, "Get hardware info");
             }
-            let hwid_list = enumerate_hardware(None, missing_only)
+            let discovered_hardware = enumerate_hardware(None, missing_only)
                 .with_context(|| "Get hardware info failed")?;
             if DEBUG.load(Ordering::Relaxed) {
                 write_console(
                     ConsoleType::Debug,
-                    &format!("Found {} devices", hwid_list.len()),
+                    &format!("Found {} devices", discovered_hardware.len()),
                 );
             }
-            if hwid_list.is_empty() {
+            if discovered_hardware.is_empty() {
                 // 没有需要安装驱动的设备
                 return Err(anyhow!(t!("no-found-driver-currently")));
             }
 
-            // 过滤前一次安装的硬件信息
-            let hwid_list: Vec<HardwareInfo> = hwid_list
+            let discovered_count = discovered_hardware.len();
+            let mut already_processed = 0;
+            let hwid_list: Vec<HardwareInfo> = discovered_hardware
                 .into_iter()
-                .filter(|item| !total_list.contains(item))
+                .filter(|item| {
+                    let instance = normalize_device_id(&item.device_instance_path);
+                    if processed_instances.insert(instance) {
+                        true
+                    } else {
+                        already_processed += 1;
+                        false
+                    }
+                })
                 .collect();
 
             // 硬件信息为空，当前没有需要安装驱动的设备
             if hwid_list.is_empty() {
+                if DEBUG.load(Ordering::Relaxed) {
+                    write_console(
+                        ConsoleType::Debug,
+                        &format!(
+                            "scan {}: discovered={}, new=0, already_processed={}",
+                            scan_count + 1,
+                            discovered_count,
+                            already_processed
+                        ),
+                    );
+                }
                 break;
             }
-
-            // 合并当前扫描的硬件信息
-            total_list.extend(hwid_list.iter().cloned());
 
             // 匹配硬件设备和驱动信息
             if DEBUG.load(Ordering::Relaxed) {
@@ -282,12 +311,26 @@ impl DriverInstaller {
             let mut seen_devices = HashSet::new();
             match_hardware_and_driver.retain(|(device, _)| {
                 device.hardware_id.first().is_some_and(|primary_hwid| {
-                    seen_devices.insert((
-                        device.device_instance_path.to_ascii_uppercase(),
-                        primary_hwid.trim().to_ascii_uppercase(),
-                    ))
+                    seen_devices.insert(DeviceKey {
+                        instance: normalize_device_id(&device.device_instance_path),
+                        primary_hwid: normalize_device_id(primary_hwid),
+                    })
                 })
             });
+
+            if DEBUG.load(Ordering::Relaxed) {
+                write_console(
+                    ConsoleType::Debug,
+                    &format!(
+                        "scan {}: discovered={}, new={}, already_processed={}, matched={}",
+                        scan_count + 1,
+                        discovered_count,
+                        hwid_list.len(),
+                        already_processed,
+                        match_hardware_and_driver.len()
+                    ),
+                );
+            }
 
             if match_hardware_and_driver.is_empty() {
                 if scan_count == 0 {
@@ -939,6 +982,10 @@ fn current_match_context() -> MatchContext {
         arch: current_arch,
         os_version: format!("{}.{}.{}", version.major, version.minor, version.build),
     }
+}
+
+fn normalize_device_id(value: &str) -> String {
+    value.trim().to_ascii_uppercase()
 }
 
 fn safe_relative_path(path: &str) -> Result<PathBuf> {
