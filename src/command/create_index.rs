@@ -2,10 +2,11 @@ use crate::driver_index::{DriverIndex, InfInfo, source_fingerprint_excluding};
 use crate::temp_workspace::TempWorkspace;
 use crate::utils::console::{ConsoleType, write_console};
 use crate::utils::sevenzip::SevenZip;
-use crate::utils::utils::{get_file_crc32, get_file_list};
+use crate::utils::utils::get_file_list;
 use anyhow::{Context, Result, anyhow};
 use rust_i18n::t;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -177,13 +178,6 @@ pub fn create_index(
         })?
         .as_secs();
 
-    // 计算驱动包CRC32校验值
-    let crc32 = if drive_path.is_file() {
-        Some(get_file_crc32(drive_path).with_context(|| "get file crc32 failed")?)
-    } else {
-        None
-    };
-
     // 创建索引配置文件
     let source_exclusions = index_path
         .strip_prefix(drive_path)
@@ -199,7 +193,12 @@ pub fn create_index(
         .unwrap_or_default();
     let fingerprint = source_fingerprint_excluding(drive_path, &source_exclusions)
         .with_context(|| "create driver source fingerprint failed")?;
-    let mut config = DriverIndex::new(size, timestamp, crc32, fingerprint, inf_info_list);
+    let mut config = DriverIndex::new(size, timestamp, None, fingerprint, inf_info_list);
+    config.source_fingerprint.source_type = if drive_path.is_file() {
+        crate::driver_index::SourceType::File
+    } else {
+        crate::driver_index::SourceType::Directory
+    };
     config.source_exclusions = source_exclusions;
     config.source_fingerprint.exclusions = config.source_exclusions.clone();
 
@@ -222,13 +221,24 @@ pub fn create_index(
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or("driver.index"),
-        std::process::id()
+        fastrand::u64(..)
     );
     let temp_path = index_path
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .join(temp_name);
-    fs::write(&temp_path, data).with_context(|| t!("index-save-failed"))?;
+    let mut temp_file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&temp_path)
+        .with_context(|| t!("index-save-failed"))?;
+    if let Err(error) = temp_file
+        .write_all(&data)
+        .and_then(|_| temp_file.sync_all())
+    {
+        let _ = fs::remove_file(&temp_path);
+        return Err(error).with_context(|| t!("index-save-failed"));
+    }
     let source = HSTRING::from(temp_path.as_path());
     let destination = HSTRING::from(index_path.as_path());
     if let Err(error) = unsafe {
