@@ -745,7 +745,14 @@ impl DriverInstaller {
                 ],
             );
         }
-        Ok(())
+        if summary.failed > 0 {
+            Err(anyhow!(
+                "driver installation completed with {} failed device(s)",
+                summary.failed
+            ))
+        } else {
+            Ok(())
+        }
     }
 
     /// 加载离线系统中的驱动

@@ -387,6 +387,7 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             {
                 let package_pairs =
                     cli::resolve_package_index_pairs(driver_path, index_path.as_deref())?;
+                let mut package_failed = false;
 
                 for (drive_path_item, index) in package_pairs {
                     let class = class.clone();
@@ -413,11 +414,16 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                     }) {
                         Ok(_) => {}
                         Err(e) => {
+                            package_failed = true;
                             write_console(ConsoleType::Error, &e.to_string());
                         }
                     }
                 }
-                return Ok(());
+                return if package_failed {
+                    Err(anyhow!("one or more driver packages failed to install"))
+                } else {
+                    Ok(())
+                };
             }
 
             // 无通配符
