@@ -62,7 +62,8 @@ Written in `Rust` language, it calls Windows API to obtain hardware information 
 
 1. Match current system architecture
 2. Match current operating system version
-3. Normalize PnP identifiers and query candidates through an inverted index
+3. Apply driver-class include/exclude filters
+4. Normalize PnP identifiers and query candidates through an inverted index
 
     - Device hardware ID vs INF hardware ID
     - Device compatible ID vs INF hardware ID
@@ -90,8 +91,9 @@ Note: Please run the terminal with **administrator privileges**.
 ### Create Driver Index File
 
 Index files are usually created when using a driver package for the first time. If the driver package content changes,
-you need to rebuild the index. The current v2 format stores the matching-policy version and a SHA-256 fingerprint of
-the source package or directory manifest. Older index files are incompatible and must be regenerated with `index`.
+you need to rebuild the index. The current v3 format stores parser and matching-policy versions, source type, and a
+SHA-256 fingerprint of the source package or directory manifest. v1/v2 and incomplete indexes are rejected and must be
+regenerated with `index`.
 
 `DriverIndexer.exe index <driver package/directory path> <index file save path>`
 
@@ -116,6 +118,9 @@ Use index files or directly specify driver package paths for installation.
 - Supports wildcards (`*`, `?`) for matching multiple driver packages.
 - A temporary index is created when no index is supplied; an invalid auto-discovered index is rebuilt automatically.
 - An obsolete or invalid explicitly supplied index is rejected instead of being used silently.
+- Candidate installation failures fall back to the next ranked candidate, with a deterministic per-device summary.
+- `Extension` and `SoftwareComponent` drivers are fallback candidates unless the class is explicitly selected.
+- `--extract-to` rejects absolute, parent-traversing, and out-of-root INF paths and reuses extraction results per command.
 
 - Options
 
@@ -126,7 +131,7 @@ Use index files or directly specify driver package paths for installation.
   | `--class <class>`            | `-c`                | **Include** the specified driver class, only install drivers matching the class. Multiple classes can be specified repeatedly.       |
   | `--exclude-class <class>`    | `-e`                | **Exclude** the specified driver class, do not install drivers of the specified class. Multiple classes can be specified repeatedly. |
   | `--missing-only`             | `-m`                | Only install drivers for devices without drivers installed (i.e., devices with missing drivers).                                     |
-  | `--extract-to <directory>`   | `-x`                | Only extract drivers to the specified directory, do not perform installation operations. Default extraction to temporary directory.  |
+  | `--extract-to <directory>`   | `-x`                | Only extract drivers to the specified directory, do not perform installation operations; extraction is containment-checked. |
   | `--skip-verify`              | `-s`                | Skip driver index file verification.                                                                                                 |
   | `--force`                    | `-f`                | Force installation, overwrite existing drivers.                                                                                      |
 
@@ -331,6 +336,31 @@ specify driver classes.
 | System      | System devices                   |
 
 ## Build
+
+### Diagnostics and tests
+
+Use `--debug` to emit one JSON object per diagnostic event. Events include the stage, elapsed milliseconds, archive
+label, INF/CAT counts, cache hits, device instance, candidate path, attempt number, and Windows error when available.
+Passwords and generated temporary paths are never printed. When `--skip-verify` bypasses source verification, the
+diagnostic output identifies that choice.
+
+The default test suite is pure logic and does not enumerate devices or require elevation:
+
+```powershell
+cargo fmt -- --check
+cargo check --all-targets
+cargo test --lib --no-fail-fast
+cargo clippy --all-targets --all-features -- -D warnings
+cargo build --release
+```
+
+Run Windows/API checks explicitly in a prepared environment:
+
+```powershell
+cargo test --test windows_manual -- --ignored
+```
+
+Set `DRIVERINDEXER_MISSING_ONLY=1` to restrict enumeration, or set `DRIVERINDEXER_CATALOG` for signature verification.
 
 ### Environment Requirements
 

@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::UNIX_EPOCH;
+use std::time::{Instant, UNIX_EPOCH};
 use threadpool::ThreadPool;
 use windows::Win32::Foundation::ERROR_NO_MORE_ITEMS;
 use windows::Win32::System::SystemInformation::{
@@ -88,7 +88,7 @@ impl ExtractionCache {
         password: Option<&str>,
         relative_dir: &Path,
         destination: &Path,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         std::fs::create_dir_all(destination)
             .with_context(|| format!("create extraction root {}", destination.display()))?;
         let target_dir = contained_path(destination, relative_dir)?;
@@ -98,15 +98,17 @@ impl ExtractionCache {
             destination: cache_path(destination)?,
             password_context: password_context(password),
         };
-        let entry = {
+        let (entry, cache_hit) = {
             let mut entries = self
                 .entries
                 .lock()
                 .map_err(|_| anyhow!("driver extraction cache lock poisoned"))?;
-            entries
+            let cache_hit = entries.contains_key(&key);
+            let entry = entries
                 .entry(key)
                 .or_insert_with(|| Arc::new(OnceLock::new()))
-                .clone()
+                .clone();
+            (entry, cache_hit)
         };
         entry
             .get_or_init(|| {
@@ -123,6 +125,7 @@ impl ExtractionCache {
             })
             .clone()
             .map_err(anyhow::Error::msg)
+            .map(|()| cache_hit)
     }
 }
 
@@ -201,6 +204,12 @@ impl DriverInstaller {
                             self.build_config(driver_pack_path, password, &extract_path)?
                         } else {
                             // 校验通过或跳过校验，加载索引文件
+                            if skip_verify {
+                                debug_event(
+                                    "index.verify",
+                                    &[("skipped", "true".into()), ("reason", "cli".into())],
+                                );
+                            }
                             write_console(
                                 ConsoleType::Info,
                                 &format!("{}: {}", t!("load-index"), config_path.display()),
@@ -235,6 +244,7 @@ impl DriverInstaller {
         // 3次匹配，避免部分驱动安装不全
         let mut summary = InstallSummary::default();
         for scan_count in 0..3 {
+            let scan_started = Instant::now();
             if DEBUG.load(Ordering::Relaxed) {
                 write_console(
                     ConsoleType::Debug,
@@ -398,6 +408,15 @@ impl DriverInstaller {
                             candidate: inf_info_item.path.clone(),
                             outcome: "attempted".into(),
                         });
+                        debug_event(
+                            "install.attempt",
+                            &[
+                                ("device_instance", hardware.device_instance_path.clone()),
+                                ("candidate_path", inf_info_item.path.clone()),
+                                ("attempt", (index + 1).to_string()),
+                                ("outcome", "started".into()),
+                            ],
+                        );
                         // 判断驱动包是否需要解压
                         let inf_path = if driver_pack_path.is_file() {
                             // 获取解压路径（相对于解压所有INF文件的路径）
@@ -414,32 +433,50 @@ impl DriverInstaller {
                             let extract_path =
                                 relative_inf.parent().unwrap_or_else(|| Path::new(""));
 
-                            if let Err(e) = extraction_cache.extract_once(
+                            let cache_hit = match extraction_cache.extract_once(
                                 &zip,
                                 &driver_pack_path,
                                 password.as_deref(),
                                 extract_path,
                                 &drivers_path,
                             ) {
-                                // 解压失败
-                                if index == match_info.len() - 1 {
-                                    // 最后一个驱动，返回失败
-                                    let _ = tx.send((
-                                        hardware,
-                                        Err(anyhow!("{}: {}", t!("driver-unzip-failed"), e)),
-                                        attempts,
-                                    ));
-                                    return;
+                                Ok(cache_hit) => cache_hit,
+                                Err(e) => {
+                                    // 解压失败
+                                    if index == match_info.len() - 1 {
+                                        // 最后一个驱动，返回失败
+                                        let _ = tx.send((
+                                            hardware,
+                                            Err(anyhow!("{}: {}", t!("driver-unzip-failed"), e)),
+                                            attempts,
+                                        ));
+                                        return;
+                                    }
+                                    // 继续解压下一驱动
+                                    if DEBUG.load(Ordering::Relaxed) {
+                                        debug_event(
+                                            "install.extract",
+                                            &[
+                                                ("archive", archive_label(&driver_pack_path)),
+                                                ("candidate_path", inf_info_item.path.clone()),
+                                                ("cache_hit", "true".into()),
+                                                ("attempt", (index + 1).to_string()),
+                                                ("outcome", format!("failed: {e}")),
+                                            ],
+                                        );
+                                    }
+                                    continue;
                                 }
-                                // 继续解压下一驱动
-                                if DEBUG.load(Ordering::Relaxed) {
-                                    write_console(
-                                        ConsoleType::Debug,
-                                        &format!("Extract failed: {}", extract_path.display()),
-                                    );
-                                };
-                                continue;
                             };
+                            debug_event(
+                                "install.extract",
+                                &[
+                                    ("archive", archive_label(&driver_pack_path)),
+                                    ("candidate_path", inf_info_item.path.clone()),
+                                    ("cache_hit", cache_hit.to_string()),
+                                    ("attempt", (index + 1).to_string()),
+                                ],
+                            );
 
                             // 仅解压驱动文件，返回成功
                             if only_extract {
@@ -528,14 +565,30 @@ impl DriverInstaller {
                         // 安装驱动
                         if let Some(hwid) = hardware.hardware_id.first() {
                             if DEBUG.load(Ordering::Relaxed) {
-                                write_console(
-                                    ConsoleType::Debug,
-                                    &format!("Install driver: {}", inf_path.display()),
+                                debug_event(
+                                    "install.setupapi",
+                                    &[
+                                        ("device_instance", hardware.device_instance_path.clone()),
+                                        ("candidate_path", inf_info_item.path.clone()),
+                                        ("attempt", (index + 1).to_string()),
+                                    ],
                                 );
                             }
                             match update_driver_for_plug_and_play_devices(hwid, &inf_path, force) {
                                 Ok(()) => {
                                     // 安装驱动成功
+                                    debug_event(
+                                        "install.attempt",
+                                        &[
+                                            (
+                                                "device_instance",
+                                                hardware.device_instance_path.clone(),
+                                            ),
+                                            ("candidate_path", inf_info_item.path.clone()),
+                                            ("attempt", (index + 1).to_string()),
+                                            ("outcome", "success".into()),
+                                        ],
+                                    );
                                     let _ = tx.send((
                                         hardware,
                                         Ok((inf_info_item.clone(), entry.clone())),
@@ -545,6 +598,19 @@ impl DriverInstaller {
                                 }
                                 Err(e) => {
                                     // 安装驱动失败，继续加载下一驱动
+                                    debug_event(
+                                        "install.attempt",
+                                        &[
+                                            (
+                                                "device_instance",
+                                                hardware.device_instance_path.clone(),
+                                            ),
+                                            ("candidate_path", inf_info_item.path.clone()),
+                                            ("attempt", (index + 1).to_string()),
+                                            ("outcome", "failed".into()),
+                                            ("win32_error", e.to_string()),
+                                        ],
+                                    );
                                     if DEBUG.load(Ordering::Relaxed) {
                                         write_console(
                                             ConsoleType::Debug,
@@ -665,6 +731,19 @@ impl DriverInstaller {
                     ),
                 );
             }
+            debug_event(
+                "install.scan",
+                &[
+                    (
+                        "duration_ms",
+                        scan_started.elapsed().as_millis().to_string(),
+                    ),
+                    ("attempt", (scan_count + 1).to_string()),
+                    ("succeeded", summary.succeeded.to_string()),
+                    ("failed", summary.failed.to_string()),
+                    ("skipped", summary.skipped.to_string()),
+                ],
+            );
         }
         Ok(())
     }
@@ -791,6 +870,7 @@ impl DriverInstaller {
         password: Option<&str>,
         extract_path: &Path,
     ) -> Result<DriverIndex> {
+        let started = Instant::now();
         let drivers_path = if driver_pack_path.is_file() {
             // 解压全部 INF 文件
             if let Err(_e) = self.zip.extract_files_from_paths(
@@ -812,6 +892,20 @@ impl DriverInstaller {
             return Err(anyhow!(t!("no-driver-package")));
         }
         inf_list.sort_by_key(|path| path.to_string_lossy().to_ascii_lowercase());
+        debug_event(
+            "index.extract",
+            &[
+                ("duration_ms", started.elapsed().as_millis().to_string()),
+                ("archive", archive_label(driver_pack_path)),
+                ("inf_count", inf_list.len().to_string()),
+                (
+                    "cat_count",
+                    get_file_list(drivers_path, "*.cat")
+                        .map_or(0, |files| files.len())
+                        .to_string(),
+                ),
+            ],
+        );
 
         // 创建线程池（池大小以可用 CPU 核心数为准）
         let pool = ThreadPool::new(num_cpus::get());
@@ -881,6 +975,16 @@ impl DriverInstaller {
         if inf_info_list.is_empty() {
             return Err(anyhow!(t!("create-index-failed")));
         }
+
+        debug_event(
+            "index.parse",
+            &[
+                ("duration_ms", started.elapsed().as_millis().to_string()),
+                ("archive", archive_label(driver_pack_path)),
+                ("inf_count", inf_info_list.len().to_string()),
+                ("cat_count", "unknown".into()),
+            ],
+        );
 
         let timestamp = driver_pack_path
             .metadata()
@@ -986,6 +1090,26 @@ fn current_match_context() -> MatchContext {
 
 fn normalize_device_id(value: &str) -> String {
     value.trim().to_ascii_uppercase()
+}
+
+fn archive_label(path: &Path) -> String {
+    path.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "<unnamed>".into())
+}
+
+fn debug_event(stage: &str, fields: &[(&str, String)]) {
+    if !DEBUG.load(Ordering::Relaxed) {
+        return;
+    }
+    let mut event = serde_json::Map::new();
+    event.insert("stage".into(), serde_json::Value::String(stage.into()));
+    for (key, value) in fields {
+        event.insert((*key).into(), serde_json::Value::String(value.clone()));
+    }
+    if let Ok(serialized) = serde_json::to_string(&event) {
+        write_console(ConsoleType::Debug, &serialized);
+    }
 }
 
 fn safe_relative_path(path: &str) -> Result<PathBuf> {

@@ -299,6 +299,21 @@ impl DriverIndex {
             self.source_fingerprint.value,
             width = label_w
         ));
+        result.push_str(&format!(
+            "{:<width$} {}\n",
+            "Source Type:",
+            match &self.source_fingerprint.source_type {
+                SourceType::File => "file",
+                SourceType::Directory => "directory",
+            },
+            width = label_w
+        ));
+        result.push_str(&format!(
+            "{:<width$} {:?}\n",
+            "Source Exclusions:",
+            self.source_fingerprint.exclusions,
+            width = label_w
+        ));
 
         // 驱动大小
         result.push_str(&format!(
@@ -470,20 +485,22 @@ impl DriverIndex {
 
         let driver_size = metadata.len();
         if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
-            write_console(
-                ConsoleType::Debug,
-                &format!("driver size: {}, config size: {}", driver_size, self.size),
+            debug_event(
+                "index.verify.metadata",
+                &[
+                    ("source_size", driver_size.to_string()),
+                    ("index_size", self.size.to_string()),
+                ],
             );
         }
-
         let timestamp = metadata.modified()?.duration_since(UNIX_EPOCH)?.as_secs();
         if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
-            write_console(
-                ConsoleType::Debug,
-                &format!(
-                    "driver timestamp: {}, config timestamp: {}",
-                    timestamp, self.timestamp
-                ),
+            debug_event(
+                "index.verify.metadata",
+                &[
+                    ("source_timestamp", timestamp.to_string()),
+                    ("index_timestamp", self.timestamp.to_string()),
+                ],
             );
         }
 
@@ -491,18 +508,32 @@ impl DriverIndex {
         // authoritative check whenever metadata changed or the source is a directory.
         let fingerprint = source_fingerprint_excluding(driver_pack_path, &self.source_exclusions)?;
         if DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
-            write_console(
-                ConsoleType::Debug,
-                &format!(
-                    "driver fingerprint: {}, config fingerprint: {}",
-                    fingerprint, self.source_fingerprint.value
-                ),
+            debug_event(
+                "index.verify.fingerprint",
+                &[
+                    ("source_fingerprint", fingerprint.clone()),
+                    ("index_fingerprint", self.source_fingerprint.value.clone()),
+                ],
             );
         }
         if fingerprint != self.source_fingerprint.value {
             return Err(anyhow!("driver pack fingerprint not match"));
         }
         Ok(())
+    }
+}
+
+fn debug_event(stage: &str, fields: &[(&str, String)]) {
+    if !DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    let mut event = serde_json::Map::new();
+    event.insert("stage".into(), serde_json::Value::String(stage.into()));
+    for (key, value) in fields {
+        event.insert((*key).into(), serde_json::Value::String(value.clone()));
+    }
+    if let Ok(serialized) = serde_json::to_string(&event) {
+        write_console(ConsoleType::Debug, &serialized);
     }
 }
 

@@ -202,13 +202,6 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 write_console(ConsoleType::Error, &t!("temp-create-failed"));
                 process::exit(exitcode::IOERR);
             }
-            if DEBUG.load(Ordering::Relaxed) {
-                write_console(
-                    ConsoleType::Debug,
-                    &format!("Temp path: {}", TEMP_PATH.display(),),
-                );
-            };
-
             // 解密密码
             let mut password = password.clone();
             if let Some(crypt_text) = &password {
@@ -368,13 +361,6 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 write_console(ConsoleType::Error, &t!("temp-create-failed"));
                 process::exit(exitcode::IOERR);
             }
-            if DEBUG.load(Ordering::Relaxed) {
-                write_console(
-                    ConsoleType::Debug,
-                    &format!("Temp path: {}", TEMP_PATH.display(),),
-                );
-            };
-
             // 解密密码
             let mut password = password.clone();
             if let Some(crypt_text) = &password {
@@ -475,13 +461,6 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 write_console(ConsoleType::Error, &t!("temp-create-failed"));
                 process::exit(exitcode::IOERR);
             }
-            if DEBUG.load(Ordering::Relaxed) {
-                write_console(
-                    ConsoleType::Debug,
-                    &format!("Temp path: {}", TEMP_PATH.display(),),
-                );
-            };
-
             let driver_loader = DriverInstaller::new()?;
             match driver_loader.load_offline_driver(
                 system_drive.as_deref(),
@@ -509,13 +488,6 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 write_console(ConsoleType::Error, &t!("temp-create-failed"));
                 process::exit(exitcode::IOERR);
             }
-            if DEBUG.load(Ordering::Relaxed) {
-                write_console(
-                    ConsoleType::Debug,
-                    &format!("Temp path: {}", TEMP_PATH.display(),),
-                );
-            };
-
             // 解密密码
             let mut password = password.clone();
             if let Some(crypt_text) = &password {
@@ -795,13 +767,6 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 write_console(ConsoleType::Error, &t!("temp-create-failed"));
                 process::exit(exitcode::IOERR);
             }
-            if DEBUG.load(Ordering::Relaxed) {
-                write_console(
-                    ConsoleType::Debug,
-                    &format!("Temp path: {}", TEMP_PATH.display(),),
-                );
-            };
-
             write_console(ConsoleType::Info, &t!("driver-pack-info"));
             match command::pack_driver_program(drive_path, program_path, password.as_deref()) {
                 Ok(_) => {
