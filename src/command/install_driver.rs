@@ -10,6 +10,7 @@ use crate::utils::sevenzip::SevenZip;
 use crate::utils::utils::{find_offline_system, get_file_list, get_native_arch};
 use anyhow::{Context, Result, anyhow};
 use rust_i18n::t;
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::path::Component;
 use std::path::{Path, PathBuf};
@@ -60,10 +61,18 @@ pub struct InstallSummary {
 
 #[derive(Default)]
 struct ExtractionCache {
-    entries: Mutex<HashMap<PathBuf, ExtractionState>>,
+    entries: Mutex<HashMap<ExtractionKey, ExtractionState>>,
 }
 
 type ExtractionState = Arc<OnceLock<Result<(), String>>>;
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct ExtractionKey {
+    archive: String,
+    relative_dir: String,
+    destination: String,
+    password_context: String,
+}
 
 impl ExtractionCache {
     fn extract_once(
@@ -74,25 +83,37 @@ impl ExtractionCache {
         relative_dir: &Path,
         destination: &Path,
     ) -> Result<()> {
+        std::fs::create_dir_all(destination)
+            .with_context(|| format!("create extraction root {}", destination.display()))?;
+        let target_dir = contained_path(destination, relative_dir)?;
+        let key = ExtractionKey {
+            archive: cache_path(archive)?,
+            relative_dir: normalized_relative_path(relative_dir)?,
+            destination: cache_path(destination)?,
+            password_context: password_context(password),
+        };
         let entry = {
             let mut entries = self
                 .entries
                 .lock()
                 .map_err(|_| anyhow!("driver extraction cache lock poisoned"))?;
             entries
-                .entry(relative_dir.to_path_buf())
+                .entry(key)
                 .or_insert_with(|| Arc::new(OnceLock::new()))
                 .clone()
         };
         entry
             .get_or_init(|| {
+                std::fs::create_dir_all(&target_dir).map_err(|error| error.to_string())?;
+                ensure_contained(destination, &target_dir).map_err(|error| error.to_string())?;
                 zip.extract_files_from_path(
                     archive,
                     password,
                     &relative_dir.to_string_lossy(),
                     destination,
                 )
-                .map_err(|error| error.to_string())
+                .map_err(|error| error.to_string())?;
+                ensure_contained(destination, &target_dir).map_err(|error| error.to_string())
             })
             .clone()
             .map_err(anyhow::Error::msg)
@@ -388,7 +409,16 @@ impl DriverInstaller {
                             }
 
                             // 获取INF路径
-                            let inf_path = drivers_path.join(&relative_inf);
+                            let inf_path = match contained_path(&drivers_path, &relative_inf) {
+                                Ok(path) => path,
+                                Err(error) => {
+                                    if index == match_info.len() - 1 {
+                                        let _ = tx.send((hardware, Err(error), attempts));
+                                        return;
+                                    }
+                                    continue;
+                                }
+                            };
                             if !inf_path.is_file() {
                                 // INF文件不存在
                                 if DEBUG.load(Ordering::Relaxed) {
@@ -425,7 +455,16 @@ impl DriverInstaller {
                                     continue;
                                 }
                             };
-                            let inf_path = drivers_path.join(relative_inf);
+                            let inf_path = match contained_path(&drivers_path, &relative_inf) {
+                                Ok(path) => path,
+                                Err(error) => {
+                                    if index == match_info.len() - 1 {
+                                        let _ = tx.send((hardware, Err(error), attempts));
+                                        return;
+                                    }
+                                    continue;
+                                }
+                            };
                             if !inf_path.is_file() {
                                 if index == match_info.len() - 1 {
                                     let _ = tx.send((
@@ -903,16 +942,72 @@ fn current_match_context() -> MatchContext {
 }
 
 fn safe_relative_path(path: &str) -> Result<PathBuf> {
-    let candidate = Path::new(path);
-    if candidate.as_os_str().is_empty()
-        || candidate.components().any(|component| {
-            matches!(
-                component,
-                Component::Prefix(_) | Component::RootDir | Component::ParentDir
-            )
-        })
-    {
+    if path.is_empty() || path.contains('\0') {
+        return Err(anyhow!("unsafe driver path in index: {path}"));
+    }
+    let normalized = path.replace('\\', "/");
+    let candidate = Path::new(&normalized);
+    if candidate.components().any(|component| {
+        matches!(
+            component,
+            Component::Prefix(_) | Component::RootDir | Component::ParentDir
+        )
+    }) {
         return Err(anyhow!("unsafe driver path in index: {path}"));
     }
     Ok(candidate.to_path_buf())
+}
+
+fn normalized_relative_path(path: &Path) -> Result<String> {
+    let text = path.to_string_lossy().replace('\\', "/");
+    if text.is_empty() {
+        return Ok(String::new());
+    }
+    let normalized = safe_relative_path(&text)?;
+    Ok(normalized.to_string_lossy().replace('\\', "/"))
+}
+
+fn cache_path(path: &Path) -> Result<String> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    Ok(absolute
+        .to_string_lossy()
+        .replace('\\', "/")
+        .trim_end_matches('/')
+        .to_ascii_lowercase())
+}
+
+fn password_context(password: Option<&str>) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(password.unwrap_or_default().as_bytes());
+    let digest = hasher.finalize();
+    let hex = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("sha256:{hex}")
+}
+
+fn contained_path(root: &Path, relative: &Path) -> Result<PathBuf> {
+    if relative.as_os_str().is_empty() {
+        ensure_contained(root, root)?;
+        return Ok(root.to_path_buf());
+    }
+    let relative = safe_relative_path(&relative.to_string_lossy())?;
+    let candidate = root.join(relative);
+    ensure_contained(root, &candidate)?;
+    Ok(candidate)
+}
+
+fn ensure_contained(root: &Path, candidate: &Path) -> Result<()> {
+    let root = cache_path(root)?;
+    let candidate = cache_path(candidate)?;
+    if candidate == root || candidate.strip_prefix(&format!("{root}/")).is_some() {
+        Ok(())
+    } else {
+        Err(anyhow!("path escapes extraction root: {}", candidate))
+    }
 }
