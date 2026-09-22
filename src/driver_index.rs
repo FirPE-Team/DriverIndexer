@@ -454,7 +454,12 @@ pub fn source_fingerprint_excluding(path: &Path, exclusions: &[String]) -> Resul
     } else {
         return Err(anyhow!("source path does not exist: {}", path.display()));
     }
-    Ok(format!("sha256:{:x}", hasher.finalize()))
+    let digest = hasher.finalize();
+    let checksum = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    Ok(format!("sha256:{checksum}"))
 }
 
 impl DriverArch {
