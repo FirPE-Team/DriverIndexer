@@ -44,6 +44,20 @@ pub struct InstallOptions {
     pub force: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct InstallAttempt {
+    pub candidate: String,
+    pub outcome: String,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct InstallSummary {
+    pub succeeded: usize,
+    pub failed: usize,
+    pub skipped: usize,
+    pub attempts: usize,
+}
+
 #[derive(Default)]
 struct ExtractionCache {
     entries: Mutex<HashMap<PathBuf, ExtractionState>>,
@@ -192,6 +206,7 @@ impl DriverInstaller {
         let extraction_cache = Arc::new(ExtractionCache::default());
 
         // 3次匹配，避免部分驱动安装不全
+        let mut summary = InstallSummary::default();
         for scan_count in 0..3 {
             if DEBUG.load(Ordering::Relaxed) {
                 write_console(
@@ -309,11 +324,16 @@ impl DriverInstaller {
                 let tx = tx.clone();
                 let zip = self.zip.clone();
                 let extraction_cache = Arc::clone(&extraction_cache);
+                let mut attempts = Vec::new();
 
                 // 为每个需要安装驱动的设备分配一个线程
                 pool.execute(move || {
                     // 遍历匹配的驱动
                     for (index, (inf_info_item, entry)) in match_info.iter().enumerate() {
+                        attempts.push(InstallAttempt {
+                            candidate: inf_info_item.path.clone(),
+                            outcome: "attempted".into(),
+                        });
                         // 判断驱动包是否需要解压
                         let inf_path = if driver_pack_path.is_file() {
                             // 获取解压路径（相对于解压所有INF文件的路径）
@@ -321,7 +341,7 @@ impl DriverInstaller {
                                 Ok(path) => path,
                                 Err(error) => {
                                     if index == match_info.len() - 1 {
-                                        let _ = tx.send((hardware, Err(error)));
+                                        let _ = tx.send((hardware, Err(error), attempts));
                                         return;
                                     }
                                     continue;
@@ -343,6 +363,7 @@ impl DriverInstaller {
                                     let _ = tx.send((
                                         hardware,
                                         Err(anyhow!("{}: {}", t!("driver-unzip-failed"), e)),
+                                        attempts,
                                     ));
                                     return;
                                 }
@@ -358,8 +379,11 @@ impl DriverInstaller {
 
                             // 仅解压驱动文件，返回成功
                             if only_extract {
-                                let _ =
-                                    tx.send((hardware, Ok((inf_info_item.clone(), entry.clone()))));
+                                let _ = tx.send((
+                                    hardware,
+                                    Ok((inf_info_item.clone(), entry.clone())),
+                                    attempts,
+                                ));
                                 return;
                             }
 
@@ -381,6 +405,7 @@ impl DriverInstaller {
                                             "Driver file not found: {}",
                                             inf_path.display()
                                         )),
+                                        attempts,
                                     ));
                                     return;
                                 }
@@ -394,7 +419,7 @@ impl DriverInstaller {
                                 Ok(path) => path,
                                 Err(error) => {
                                     if index == match_info.len() - 1 {
-                                        let _ = tx.send((hardware, Err(error)));
+                                        let _ = tx.send((hardware, Err(error), attempts));
                                         return;
                                     }
                                     continue;
@@ -409,6 +434,7 @@ impl DriverInstaller {
                                             "Driver file not found: {}",
                                             inf_path.display()
                                         )),
+                                        attempts,
                                     ));
                                     return;
                                 }
@@ -431,6 +457,7 @@ impl DriverInstaller {
                                     let _ = tx.send((
                                         hardware,
                                         Ok((inf_info_item.clone(), entry.clone())),
+                                        attempts,
                                     ));
                                     return;
                                 }
@@ -457,9 +484,14 @@ impl DriverInstaller {
                                                     name = hardware.name.clone()
                                                 ),
                                             );
+                                            let _ = tx.send((
+                                                hardware,
+                                                Err(anyhow!("driver is not a better match")),
+                                                attempts,
+                                            ));
                                             return;
                                         }
-                                        let _ = tx.send((hardware, Err(e.into())));
+                                        let _ = tx.send((hardware, Err(e.into()), attempts));
                                         return;
                                     }
                                     continue;
@@ -476,13 +508,14 @@ impl DriverInstaller {
                             let _ = tx.send((
                                 hardware,
                                 Err(anyhow!("No hardware ID found for: {}", inf_info_item.path)),
+                                attempts,
                             ));
                             return;
                         }
                     }
 
                     // 没有找到合适的驱动
-                    let _ = tx.send((hardware, Err(anyhow!("No driver found"))));
+                    let _ = tx.send((hardware, Err(anyhow!("No driver found")), attempts));
                 });
             }
 
@@ -491,14 +524,16 @@ impl DriverInstaller {
 
             // 在主线程中进行消息格式化和输出
             let mut install_results: Vec<_> = rx.iter().collect();
-            install_results.sort_by(|(left, _), (right, _)| {
+            install_results.sort_by(|(left, _, _), (right, _, _)| {
                 left.device_instance_path
                     .to_ascii_lowercase()
                     .cmp(&right.device_instance_path.to_ascii_lowercase())
             });
-            for (hardware, result) in install_results {
+            for (hardware, result, attempts) in install_results {
+                summary.attempts += attempts.len();
                 match result {
                     Ok((inf_info_item, entry)) => {
+                        summary.succeeded += 1;
                         write_console(
                             ConsoleType::Success,
                             &t!(
@@ -506,7 +541,11 @@ impl DriverInstaller {
                                 class = inf_info_item.class,
                                 name = hardware.name,
                                 desc = entry.desc,
-                                id = hardware.hardware_id.first().unwrap_or(&"".to_string()),
+                                id = hardware
+                                    .hardware_id
+                                    .first()
+                                    .map(String::as_str)
+                                    .unwrap_or(""),
                                 driver = inf_info_item.path,
                                 version = inf_info_item.version,
                                 date = inf_info_item.date
@@ -514,17 +553,35 @@ impl DriverInstaller {
                         );
                     }
                     Err(e) => {
+                        if e.to_string().contains("not a better match") {
+                            summary.skipped += 1;
+                        } else {
+                            summary.failed += 1;
+                        }
                         write_console(
                             ConsoleType::Error,
                             &t!(
                                 "install-failed",
                                 name = hardware.name,
-                                id = hardware.hardware_id.first().unwrap_or(&"".to_string()),
+                                id = hardware
+                                    .hardware_id
+                                    .first()
+                                    .map(String::as_str)
+                                    .unwrap_or(""),
                                 info = e
                             ),
                         );
                     }
                 }
+            }
+            if DEBUG.load(Ordering::Relaxed) {
+                write_console(
+                    ConsoleType::Debug,
+                    &format!(
+                        "install summary: succeeded={}, failed={}, skipped={}, attempts={}",
+                        summary.succeeded, summary.failed, summary.skipped, summary.attempts
+                    ),
+                );
             }
         }
         Ok(())
