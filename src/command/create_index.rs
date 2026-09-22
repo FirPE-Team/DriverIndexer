@@ -1,5 +1,5 @@
-use crate::TEMP_PATH;
 use crate::driver_index::{DriverIndex, InfInfo, source_fingerprint_excluding};
+use crate::temp_workspace::TempWorkspace;
 use crate::utils::console::{ConsoleType, write_console};
 use crate::utils::sevenzip::SevenZip;
 use crate::utils::utils::{get_file_crc32, get_file_list};
@@ -35,7 +35,8 @@ pub fn create_index(
     save_path: &Path,
     compress: bool,
 ) -> Result<(u32, u32, u32, u32)> {
-    let zip = SevenZip::new().with_context(|| "create sevenZip failed")?;
+    let workspace = TempWorkspace::create("index")?;
+    let zip = SevenZip::new_in(workspace.path()).with_context(|| "create sevenZip failed")?;
 
     // INF文件父路径
     let inf_parent_path;
@@ -56,7 +57,11 @@ pub fn create_index(
         };
     } else {
         // 从文件中创建索引文件
-        inf_parent_path = TEMP_PATH.join(drive_path.file_stem().unwrap());
+        inf_parent_path = workspace.path().join(
+            drive_path
+                .file_stem()
+                .ok_or_else(|| anyhow!("driver package has no file name"))?,
+        );
 
         // 解压全部INF文件
         if let Err(e) = zip.extract_files_from_path(drive_path, password, "*.inf", &inf_parent_path)
@@ -89,6 +94,7 @@ pub fn create_index(
     let (tx, rx) = channel();
 
     let base_path = Arc::new(inf_parent_path);
+    let workspace_prefix = workspace.path().to_string_lossy().into_owned();
     let success_count = Arc::new(AtomicI32::new(0));
     let error_count = Arc::new(AtomicI32::new(0));
     let blank_count = Arc::new(AtomicI32::new(0));
@@ -100,6 +106,7 @@ pub fn create_index(
         let success_count = Arc::clone(&success_count);
         let error_count = Arc::clone(&error_count);
         let blank_count = Arc::clone(&blank_count);
+        let workspace_prefix = workspace_prefix.clone();
 
         // 多线程解析INF文件
         pool.execute(move || {
@@ -113,8 +120,7 @@ pub fn create_index(
                             &format!(
                                 "{}: {}",
                                 t!("no-hardware"),
-                                item.to_string_lossy()
-                                    .trim_start_matches(&*TEMP_PATH.to_string_lossy())
+                                item.to_string_lossy().trim_start_matches(&workspace_prefix)
                             ),
                         );
                         return;
@@ -129,8 +135,7 @@ pub fn create_index(
                         &format!(
                             "{}: {} ({})",
                             t!("inf-parse-error"),
-                            item.to_string_lossy()
-                                .trim_start_matches(&*TEMP_PATH.to_string_lossy()),
+                            item.to_string_lossy().trim_start_matches(&workspace_prefix),
                             e
                         ),
                     );

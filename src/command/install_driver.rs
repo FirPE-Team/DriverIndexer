@@ -1,12 +1,13 @@
+use crate::DEBUG;
 use crate::command::check_if_bundled;
 use crate::driver_index::{DriverArch, DriverIndex, HardwareEntry, InfInfo};
 use crate::driver_match::{DriverLookup, MatchContext, match_drivers};
 use crate::hardware::{HardwareInfo, enumerate_hardware, update_driver_for_plug_and_play_devices};
+use crate::temp_workspace::TempWorkspace;
 use crate::utils::console::{ConsoleType, write_console};
 use crate::utils::setupapi::SetupAPI;
 use crate::utils::sevenzip::SevenZip;
 use crate::utils::utils::{find_offline_system, get_file_list, get_native_arch};
-use crate::{DEBUG, TEMP_PATH};
 use anyhow::{Context, Result, anyhow};
 use rust_i18n::t;
 use std::collections::{HashMap, HashSet};
@@ -26,6 +27,7 @@ use windows_version::OsVersion;
 
 pub struct DriverInstaller {
     zip: SevenZip,
+    workspace: TempWorkspace,
 }
 
 /// Options controlling an online or offline driver installation.
@@ -85,8 +87,11 @@ impl ExtractionCache {
 
 impl DriverInstaller {
     pub fn new() -> Result<Self> {
+        let workspace = TempWorkspace::create("install")?;
         Ok(Self {
-            zip: SevenZip::new().with_context(|| "Create SevenZip instance failed")?,
+            zip: SevenZip::new_in(workspace.path())
+                .with_context(|| "Create SevenZip instance failed")?,
+            workspace,
         })
     }
 
@@ -116,7 +121,11 @@ impl DriverInstaller {
         let extract_path = if driver_pack_path.is_dir() {
             driver_pack_path.to_path_buf()
         } else {
-            TEMP_PATH.join(driver_pack_path.file_stem().unwrap())
+            self.workspace.path().join(
+                driver_pack_path
+                    .file_stem()
+                    .ok_or_else(|| anyhow!("driver package has no file name"))?,
+            )
         };
 
         // 索引文件路径
@@ -675,6 +684,7 @@ impl DriverInstaller {
         // 通道，用于收集每个线程的 InfInfo
         let (tx, rx) = channel();
         let base_path = Arc::new(drivers_path.to_path_buf());
+        let workspace_prefix = self.workspace.path().to_string_lossy().into_owned();
 
         let success_count = Arc::new(AtomicI32::new(0));
         let error_count = Arc::new(AtomicI32::new(0));
@@ -685,6 +695,7 @@ impl DriverInstaller {
             let base_path = Arc::clone(&base_path);
             let success_count = Arc::clone(&success_count);
             let error_count = Arc::clone(&error_count);
+            let workspace_prefix = workspace_prefix.clone();
 
             pool.execute(move || {
                 // 解析INF文件，解析失败的INF将自动跳过
@@ -703,7 +714,7 @@ impl DriverInstaller {
                                 t!("inf-parse-error"),
                                 inf_file
                                     .to_string_lossy()
-                                    .trim_start_matches(&*TEMP_PATH.to_string_lossy()),
+                                    .trim_start_matches(&workspace_prefix),
                                 e
                             ),
                         );

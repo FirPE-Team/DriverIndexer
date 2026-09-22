@@ -1,13 +1,15 @@
-use crate::TEMP_PATH;
+use crate::temp_workspace::TempWorkspace;
 use crate::utils::utils::write_embed_file;
 use anyhow::{Context, Result, anyhow};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct SevenZip {
     zip_program: PathBuf,
+    workspace: Option<Arc<TempWorkspace>>,
 }
 
 impl SevenZip {
@@ -17,6 +19,23 @@ impl SevenZip {
     /// - `Ok(SevenZip)`: 初始化成功
     /// - `Err()`: 初始化失败，返回错误信息
     pub fn new() -> Result<SevenZip> {
+        let workspace = Arc::new(TempWorkspace::create("sevenzip")?);
+        Self::new_in_owned(workspace)
+    }
+
+    pub fn new_in(workspace: &Path) -> Result<SevenZip> {
+        Self::new_in_path(workspace, None)
+    }
+
+    fn new_in_owned(workspace: Arc<TempWorkspace>) -> Result<SevenZip> {
+        let path = workspace.path().to_path_buf();
+        Self::new_in_path(&path, Some(workspace))
+    }
+
+    fn new_in_path(
+        workspace: &Path,
+        workspace_owner: Option<Arc<TempWorkspace>>,
+    ) -> Result<SevenZip> {
         // 检查自身所在目录是否存在 7z.exe
         if let Ok(current_exe) = env::current_exe()
             && let Some(exe_dir) = current_exe.parent()
@@ -26,19 +45,23 @@ impl SevenZip {
                 // 如果本地存在，直接返回本地路径
                 return Ok(SevenZip {
                     zip_program: local_7z,
+                    workspace: None,
                 });
             }
         }
 
         // 如果本地不存在，从资源中提取到临时目录
-        let zip_program = TEMP_PATH.join("7z.exe");
+        let zip_program = workspace.join("7z.exe");
         if !zip_program.exists() {
             write_embed_file("7z.exe", &zip_program)
                 .with_context(|| "Write 7z.exe to temp path failed")?;
-            write_embed_file("7z.dll", &TEMP_PATH.join("7z.dll"))
+            write_embed_file("7z.dll", &workspace.join("7z.dll"))
                 .with_context(|| "Write 7z.dll to temp path failed")?;
         }
-        Ok(SevenZip { zip_program })
+        Ok(SevenZip {
+            zip_program,
+            workspace: workspace_owner,
+        })
     }
 
     /// 7-zip 创建压缩包

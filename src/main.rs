@@ -17,6 +17,7 @@ mod driver_manager;
 mod driver_match;
 mod hardware;
 mod tests;
+mod temp_workspace;
 mod utils;
 
 use crate::cli::Cli;

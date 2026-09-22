@@ -11,6 +11,7 @@ rust_i18n::i18n!("locales");
 pub mod driver_index;
 pub mod driver_match;
 pub mod hardware;
+pub mod temp_workspace;
 pub mod utils;
 
 use dotenvy_macro::dotenv;
