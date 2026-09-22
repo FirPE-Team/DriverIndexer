@@ -80,27 +80,21 @@ impl SetupAPI {
         };
 
         // 如果缓冲区太小，returned_count会包含实际需要的数量
-        if let Err(e) = result {
-            // 检查错误码是否为缓冲区太小 (ERROR_INSUFFICIENT_BUFFER)
-            if e.code().0 == -2147024774i32 {
-                // 0x8007007A as i32
-                // 使用返回的数量重新分配缓冲区
-                guid_list = vec![GUID::default(); returned_count as usize];
-
-                // 再次调用，这次应该成功
-                unsafe {
-                    SetupDiClassGuidsFromNameExW(
-                        PCWSTR(class_name_wide.as_ptr()),
-                        &mut guid_list,
-                        &mut returned_count,
-                        None,
-                        None,
-                    )
-                }
-                .with_context(|| "Failed to get GUID list")?;
-            } else {
-                return Err(e).with_context(|| "Failed to get required GUID count");
+        if let Err(error) = result {
+            if returned_count == 0 {
+                return Err(error).with_context(|| "Failed to get required GUID count");
             }
+            guid_list = vec![GUID::default(); returned_count as usize];
+            unsafe {
+                SetupDiClassGuidsFromNameExW(
+                    PCWSTR(class_name_wide.as_ptr()),
+                    &mut guid_list,
+                    &mut returned_count,
+                    None,
+                    None,
+                )
+            }
+            .with_context(|| "Failed to get GUID list")?;
         }
 
         // 调整返回的GUID数量
@@ -117,14 +111,23 @@ impl SetupAPI {
     /// - `Ok(String)`: 成功返回类名的描述
     /// - `Err(e)`: 失败则返回错误信息
     pub fn get_class_description_from_guid(guid: &GUID) -> Result<String> {
-        let mut buf: [u16; 256] = [0; 256];
-        let mut needed: u32 = 0;
-        unsafe {
-            SetupDiGetClassDescriptionW(guid, &mut buf, Some(&mut needed))
-                .with_context(|| "Get driver class description failed")?;
+        let mut capacity = 256usize;
+        loop {
+            let mut buf = vec![0u16; capacity];
+            let mut needed = 0u32;
+            match unsafe { SetupDiGetClassDescriptionW(guid, &mut buf, Some(&mut needed)) } {
+                Ok(()) => {
+                    let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+                    return Ok(String::from_utf16_lossy(&buf[..len]));
+                }
+                Err(_error) if needed as usize >= capacity => {
+                    capacity = needed as usize + 1;
+                }
+                Err(error) => {
+                    return Err(error).with_context(|| "Get driver class description failed");
+                }
+            }
         }
-        let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-        Ok(String::from_utf16_lossy(&buf[..len]))
     }
 
     /// 根据字符串获取GUID
