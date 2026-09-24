@@ -20,7 +20,7 @@ use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
 use walkdir::WalkDir;
 
-pub const DRIVER_INDEX_FORMAT_VERSION: u16 = 3;
+pub const DRIVER_INDEX_FORMAT_VERSION: u16 = 2;
 pub const MATCHING_POLICY_VERSION: u16 = 2;
 pub const INF_PARSER_VERSION: u16 = 2;
 
@@ -993,13 +993,13 @@ mod tests {
     }
 
     #[test]
-    fn rejects_v2_index_file_with_rebuild_error() {
+    fn rejects_v1_index_file_with_rebuild_error() {
         let nonce = std::time::SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path = std::env::temp_dir().join(format!("driver-index-v2-{nonce}.index"));
-        std::fs::write(&path, br#"{"format_version":2}"#).unwrap();
+        let path = std::env::temp_dir().join(format!("driver-index-v1-{nonce}.index"));
+        std::fs::write(&path, br#"{"format_version":1}"#).unwrap();
         let error = DriverIndex::from_path(&path).unwrap_err().to_string();
         std::fs::remove_file(path).unwrap();
         assert!(error.contains("rebuild the index"));
