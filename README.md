@@ -91,8 +91,8 @@ Note: Please run the terminal with **administrator privileges**.
 ### Create Driver Index File
 
 Index files are usually created when using a driver package for the first time. If the driver package content changes,
-you need to rebuild the index. The current v3 format stores parser and matching-policy versions, source type, and a
-SHA-256 fingerprint of the source package or directory manifest. v1/v2 and incomplete indexes are rejected and must be
+you need to rebuild the index. The current v2 format stores parser and matching-policy versions, source type, and a
+SHA-256 fingerprint of the source package or directory manifest. v1, legacy pre-release v2, and incomplete indexes are rejected and must be
 regenerated with `index`.
 
 `DriverIndexer.exe index <driver package/directory path> <index file save path>`

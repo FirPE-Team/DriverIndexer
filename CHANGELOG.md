@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-09-29
+
+### Added
+
+- Add Windows-like deterministic driver ranking
+- Add versioned driver index schema (v2) with parser and matching-policy metadata
+
+### Changed
+
+- Refactor driver matching to isolate it from the Windows runtime
+- Validate driver indexes against authoritative source fingerprints
+- Improve driver matching performance with inverted hardware ID lookup
+- Cache on-demand driver extraction during installation
+- Reduce archive extraction and INF parsing overhead
+- Use scoped temporary workspaces for indexing and installation
+- Model per-device installation outcomes and fallback attempts
+- Improve wildcard package and index resolution
+- Improve plain-text console output and diagnostic reporting
+- Document driver-index v2 migration, ranking rules, and diagnostic output
+
+### Fixed
+
+- Improve log file output
+- Improve check if driver pack path is a file before extraction
+- Normalize hardware IDs and support decorated INF model and install sections
+- Read unbounded SetupAPI string fields when parsing INF files
+- Prevent loops caused by blank hardware IDs
+- Harden SetupAPI buffer handling and error reporting
+- Harden extraction paths, isolate extraction cache keys, and enforce containment
+- Stabilize device rescan deduplication and driver installation results
+- Return aggregated failures when one or more driver installations fail
+- Exclude generated index files from directory fingerprints
+- Propagate driver initialization and index validation errors
+- Format source SHA-256 checksums consistently
+- Correct the CLI extraction option name in the documentation
+
 ## [2.3.1] - 2026-04-09
 
 ### Fixed
