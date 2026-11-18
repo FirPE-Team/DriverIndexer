@@ -182,14 +182,13 @@ impl SetupAPI {
         // 将section转换为宽字符串
         let section_wide = HSTRING::from(section);
 
-        // 将key转换为宽字符串
-        let key_wide = match key {
-            Some(key) => {
-                let key_hstring = HSTRING::from(key);
-                PCWSTR(key_hstring.as_ptr())
-            }
-            None => PCWSTR::null(),
-        };
+        // Keep the owning string alive until SetupFindFirstLineW returns.
+        // PCWSTR only borrows its buffer; dropping an HSTRING inside a match
+        // arm leaves a dangling pointer that can be reused by another thread.
+        let key_hstring = key.map(HSTRING::from);
+        let key_wide = key_hstring
+            .as_ref()
+            .map_or(PCWSTR::null(), |key| PCWSTR(key.as_ptr()));
 
         let mut context = INFCONTEXT::default();
         unsafe {

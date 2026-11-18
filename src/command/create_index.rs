@@ -140,7 +140,7 @@ pub fn create_index(
                     write_console(
                         ConsoleType::Error,
                         &format!(
-                            "{}: {} ({})",
+                            "{}: {} ({:#})",
                             t!("inf-parse-error"),
                             item.to_string_lossy().trim_start_matches(&workspace_prefix),
                             e
