@@ -13,9 +13,11 @@ rust_i18n::i18n!("locales");
 mod cli;
 mod command;
 mod driver_index;
+mod driver_management;
 mod driver_manager;
 mod driver_match;
 mod hardware;
+mod legacy_driver_manager;
 mod temp_workspace;
 mod utils;
 
