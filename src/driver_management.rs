@@ -1,6 +1,6 @@
 //! Shared target, records and result types for driver-store management.
 use crate::utils::{
-    driver_store::{DriverPackageVersionInfo, DriverStore},
+    drvstore::{DriverPackageVersionInfo, DriverStore},
     utils::{
         get_current_system_root, get_file_version, get_offline_system_arch, is_offline_system,
     },
@@ -200,7 +200,7 @@ impl DriverFilter<'_> {
 pub struct NativeBackend<'a> {
     pub target: &'a DriverTarget,
     pub api: &'a DriverStore,
-    pub store: crate::utils::driver_store::StoreSession<'a>,
+    pub store: crate::utils::drvstore::StoreSession<'a>,
 }
 impl<'a> NativeBackend<'a> {
     pub fn new(target: &'a DriverTarget, api: &'a DriverStore) -> Result<Self> {
@@ -233,8 +233,11 @@ impl DriverBackend for NativeBackend<'_> {
     fn delete(&self, inf: &Path) -> Result<()> {
         Ok(self.store.delete(inf)?)
     }
-    fn remove_devices(&self, _: &str, _: &Path) -> Result<()> {
-        Err(anyhow!("online removal backend not enabled"))
+    fn remove_devices(&self, name: &str, path: &Path) -> Result<()> {
+        if self.target.offline {
+            return Err(anyhow!("device removal is online-only"));
+        }
+        crate::utils::driver_devices::remove_bound_devices(name, path)
     }
     fn rescan(&self) -> Result<()> {
         if self.target.offline || crate::utils::setupapi::SetupAPI::rescan() {
@@ -421,7 +424,7 @@ impl ItemResult {
         let code = error
             .chain()
             .find_map(|e| {
-                e.downcast_ref::<crate::utils::driver_store::DrvstoreError>()
+                e.downcast_ref::<crate::utils::drvstore::DrvstoreError>()
                     .and_then(|e| e.code())
             })
             .or_else(|| {
@@ -508,7 +511,7 @@ mod workflow_tests {
         fn step(&self, name: &'static str) -> Result<()> {
             self.trace.borrow_mut().push(name);
             if self.fail == Some(name) {
-                Err(crate::utils::driver_store::DrvstoreError::Win32Error(5).into())
+                Err(crate::utils::drvstore::DrvstoreError::Win32Error(5).into())
             } else {
                 Ok(())
             }
@@ -555,6 +558,72 @@ mod workflow_tests {
         fn rescan(&self) -> Result<()> {
             self.step("rescan")
         }
+    }
+    #[test]
+    fn removal_order_oem_guard_and_partial_failures() {
+        let f = Fake::new();
+        let record = DriverRecord {
+            published_name: "oem42.inf".into(),
+            inf_path: "repo/driver.inf".into(),
+            info: f.info(Path::new("source.inf")).unwrap(),
+            class_description: String::new(),
+            critical: true,
+            inbox: false,
+            size_bytes: 0,
+        };
+        f.trace.borrow_mut().clear();
+        let records = vec![record.clone()];
+        assert!(
+            remove_records(&f, &records, Path::new("C:/Windows"), true)
+                .unwrap()
+                .ensure_success()
+                .is_ok()
+        );
+        assert_eq!(*f.trace.borrow(), ["devices", "unreflect", "delete"]);
+        f.trace.borrow_mut().clear();
+        assert!(
+            remove_records(&f, &records, Path::new("image/Windows"), false)
+                .unwrap()
+                .ensure_success()
+                .is_ok()
+        );
+        assert_eq!(*f.trace.borrow(), ["unreflect", "delete"]);
+        let mut inbox = record.clone();
+        inbox.inbox = true;
+        inbox.published_name = "disk.inf".into();
+        f.trace.borrow_mut().clear();
+        assert!(
+            remove_records(&f, &[inbox], Path::new("C:/Windows"), true)
+                .unwrap()
+                .ensure_success()
+                .is_err()
+        );
+        assert!(f.trace.borrow().is_empty());
+        for step in ["devices", "delete"] {
+            let f = Fake {
+                fail: Some(step),
+                ..Fake::new()
+            };
+            let batch = remove_records(
+                &f,
+                &[record.clone(), record.clone()],
+                Path::new("C:/Windows"),
+                true,
+            )
+            .unwrap();
+            assert_eq!(batch.counts(), (0, 2, 0, 2));
+            assert_eq!(batch.items[0].code, Some(5));
+        }
+        let f = Fake {
+            fail: Some("unreflect"),
+            ..Fake::new()
+        };
+        assert!(
+            remove_records(&f, &records, Path::new("image/Windows"), false)
+                .unwrap()
+                .ensure_success()
+                .is_ok()
+        );
     }
     #[test]
     fn import_order_and_idempotence() {
@@ -744,4 +813,50 @@ mod export_tests {
         assert!(copy_package(&source, &source.join("recursive")).is_err());
         assert!(export_records(&[], &dest).is_err());
     }
+}
+
+pub fn remove_records(
+    backend: &impl DriverBackend,
+    records: &[DriverRecord],
+    windows: &Path,
+    online: bool,
+) -> Result<BatchResult> {
+    if records.is_empty() {
+        return Err(anyhow!(rust_i18n::t!("driver-remove-not-found")));
+    }
+    let mut batch = BatchResult::default();
+    for record in records {
+        let remove = || -> Result<ItemResult> {
+            if record.inbox || !is_oem(&record.published_name) {
+                return Err(anyhow!(rust_i18n::t!("management.inbox-removal")));
+            }
+            if online {
+                backend.remove_devices(
+                    &record.published_name,
+                    &windows.join("INF").join(&record.published_name),
+                )?;
+            }
+            let warning = if record.critical {
+                backend
+                    .critical(&record.inf_path, true)
+                    .err()
+                    .map(|e| format!("critical unreflection: {e:#}"))
+                    .unwrap_or_default()
+            } else {
+                String::new()
+            };
+            backend.delete(&record.inf_path)?;
+            Ok(ItemResult {
+                path: PathBuf::from(&record.published_name),
+                status: ItemStatus::Success,
+                message: warning,
+                code: None,
+            })
+        };
+        batch.items.push(
+            remove()
+                .unwrap_or_else(|e| ItemResult::error(PathBuf::from(&record.published_name), e)),
+        );
+    }
+    Ok(batch)
 }

@@ -138,3 +138,4 @@ management:
   failed: "失敗"
   summary: "共處理 %{total} 個驅動，成功 %{success}，失敗 %{fail}，不適用 %{not_applicable}"
   unknown: "未知"
+  inbox-removal: "不能刪除內建驅動，請選擇已發佈的 OEM INF"

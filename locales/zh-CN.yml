@@ -141,3 +141,4 @@ management:
   failed: "失败"
   summary: "共处理 %{total} 个驱动，成功 %{success}，失败 %{fail}，不适用 %{not_applicable}"
   unknown: "未知"
+  inbox-removal: "不能删除内置驱动，请选择已发布的 OEM INF"

@@ -137,3 +137,4 @@ management:
   failed: "失敗"
   summary: "合計 %{total} 件：成功 %{success}、失敗 %{fail}、適用外 %{not_applicable}"
   unknown: "不明"
+  inbox-removal: "内蔵ドライバーは削除できません。公開済み OEM INF を選択してください"

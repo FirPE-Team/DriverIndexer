@@ -138,3 +138,4 @@ management:
   failed: "Failed"
   summary: "Processed %{total} drivers: %{success} successful, %{fail} failed, %{not_applicable} not applicable"
   unknown: "Unknown"
+  inbox-removal: "Inbox packages cannot be removed; select a published OEM INF"

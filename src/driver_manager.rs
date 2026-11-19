@@ -1,4 +1,4 @@
-//! Driver management facade. Operations migrate individually from the legacy facade.
+//! CLI adapter for independent Rust driver-store workflows.
 use crate::driver_management::DriverTarget;
 use anyhow::Result;
 use std::path::Path;
@@ -10,9 +10,6 @@ impl DriverManger {
         Ok(Self {
             target: DriverTarget::discover(system_drive)?,
         })
-    }
-    fn legacy(&self) -> Result<crate::legacy_driver_manager::DriverManger> {
-        crate::legacy_driver_manager::DriverManger::new(&self.target.root)
     }
     pub fn list_driver(
         &self,
@@ -121,19 +118,19 @@ impl DriverManger {
         let backend = NativeBackend::new(&self.target, &api)?;
         export_records(&enumerate(&backend, &self.target.windows, filter)?, output)
     }
-    #[allow(clippy::too_many_arguments)]
     pub fn remove_driver(
         &self,
-        root: &Path,
-        system: bool,
-        only: bool,
-        inf: Option<&str>,
-        class: Option<&[String]>,
-        provider: Option<&[String]>,
-        all: bool,
-    ) -> Result<(u32, u32, u32)> {
-        self.legacy()?
-            .remove_driver(root, system, only, inf, class, provider, all)
+        filter: crate::driver_management::DriverFilter<'_>,
+    ) -> Result<crate::driver_management::BatchResult> {
+        use crate::driver_management::*;
+        let api = self.target.api()?;
+        let backend = NativeBackend::new(&self.target, &api)?;
+        remove_records(
+            &backend,
+            &enumerate(&backend, &self.target.windows, filter)?,
+            &self.target.windows,
+            !self.target.offline,
+        )
     }
 }
 

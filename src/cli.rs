@@ -246,6 +246,11 @@ pub enum Command {
         #[clap(help(t!("options.driver-category").to_string()))]
         class: Option<Vec<String>>,
 
+        /// 排除驱动类别
+        #[clap(short = 'e', long)]
+        #[clap(help(t!("options.exclude-category").to_string()))]
+        exclude_class: Option<Vec<String>>,
+
         /// 指定驱动厂商
         #[clap(short, long)]
         #[clap(help(t!("options.driver-provider").to_string()))]

@@ -17,7 +17,6 @@ mod driver_management;
 mod driver_manager;
 mod driver_match;
 mod hardware;
-mod legacy_driver_manager;
 mod temp_workspace;
 mod utils;
 
@@ -545,57 +544,27 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             result.ensure_success()
         }
 
-        // 卸载驱动程序
         Command::Remove {
             system_drive,
             include_system,
             system_only,
             inf,
             class,
+            exclude_class,
             provider,
-            all,
+            all: _,
         } => {
-            // 创建临时目录
-            if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
-                write_console(ConsoleType::Error, &t!("temp-create-failed"));
-                process::exit(exitcode::IOERR);
-            }
-
-            let driver_manger = match DriverManger::new(system_drive) {
-                Ok(driver_manger) => driver_manger,
-                Err(e) => {
-                    write_console(ConsoleType::Error, &e.to_string());
-                    return Err(e);
-                }
-            };
-
-            match driver_manger.remove_driver(
-                system_drive,
-                *include_system,
-                *system_only,
-                inf.as_deref(),
-                class.as_deref(),
-                provider.as_deref(),
-                *all,
-            ) {
-                Ok((success_count, fail_count, total_count)) => {
-                    // 输出导出统计信息
-                    write_console(
-                        ConsoleType::Info,
-                        &t!(
-                            "driver-remove-summary",
-                            success = success_count.to_string(),
-                            fail = fail_count.to_string(),
-                            total = total_count.to_string()
-                        ),
-                    );
-                    Ok(())
-                }
-                Err(e) => {
-                    write_console(ConsoleType::Error, &e.to_string());
-                    Err(e)
-                }
-            }
+            let manager = DriverManger::new(system_drive)?;
+            let result = manager.remove_driver(driver_management::DriverFilter {
+                include_system: *include_system,
+                system_only: *system_only,
+                inf: inf.as_deref(),
+                class: class.as_deref(),
+                exclude_class: exclude_class.as_deref(),
+                provider: provider.as_deref(),
+            })?;
+            driver_manager::report_batch(&result);
+            result.ensure_success()
         }
 
         // 列举驱动程序
