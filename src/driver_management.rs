@@ -601,3 +601,147 @@ mod workflow_tests {
         }
     }
 }
+
+pub fn export_category(description: &str) -> String {
+    let value = if description.trim().is_empty() {
+        rust_i18n::t!("management.unknown").into_owned()
+    } else {
+        description.to_string()
+    };
+    let mut value: String = value
+        .chars()
+        .map(|c| {
+            if c < ' ' || "\\/:*?\"<>|".contains(c) {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    value = value.trim_end_matches([' ', '.']).to_string();
+    if value.is_empty() {
+        value = "_".into();
+    }
+    let stem = value.split('.').next().unwrap_or("").to_ascii_uppercase();
+    if [
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ]
+    .contains(&stem.as_str())
+    {
+        value.insert(0, '_');
+    }
+    value
+}
+pub fn copy_package(source: &Path, destination: &Path) -> Result<()> {
+    std::fs::create_dir_all(destination)?;
+    let from = source.canonicalize()?;
+    let to = destination.canonicalize()?;
+    if to.starts_with(&from) {
+        return Err(anyhow!(
+            "export destination must be outside the source package"
+        ));
+    }
+    let mut directories = Vec::new();
+    for entry in walkdir::WalkDir::new(&from).follow_links(false) {
+        let entry = entry?;
+        let target = to.join(entry.path().strip_prefix(&from)?);
+        if entry.file_type().is_symlink() {
+            return Err(anyhow!(
+                "package contains a reparse point: {}",
+                entry.path().display()
+            ));
+        }
+        let meta = entry.metadata()?;
+        if entry.file_type().is_dir() {
+            std::fs::create_dir_all(&target)?;
+            directories.push((target, meta));
+        } else if entry.file_type().is_file() {
+            // Existing links must not redirect an overwrite outside the export tree.
+            if std::fs::symlink_metadata(&target).is_ok_and(|m| m.file_type().is_symlink()) {
+                return Err(anyhow!("export target is a reparse point"));
+            }
+            std::fs::copy(entry.path(), &target)?;
+            preserve_times(&target, &meta)?;
+        }
+    }
+    for (path, meta) in directories.into_iter().rev() {
+        preserve_times(&path, &meta)?;
+    }
+    Ok(())
+}
+fn preserve_times(path: &Path, meta: &std::fs::Metadata) -> Result<()> {
+    // FileTimes works for files; filetime also handles directories on Windows.
+    filetime::set_file_times(
+        path,
+        filetime::FileTime::from_last_access_time(meta),
+        filetime::FileTime::from_last_modification_time(meta),
+    )?;
+    Ok(())
+}
+pub fn export_records(records: &[DriverRecord], output: &Path) -> Result<BatchResult> {
+    if records.is_empty() {
+        return Err(anyhow!(rust_i18n::t!("driver-export-not-found")));
+    }
+    let mut batch = BatchResult::default();
+    for record in records {
+        let export = || -> Result<ItemResult> {
+            let source = record
+                .inf_path
+                .parent()
+                .ok_or_else(|| anyhow!("invalid repository path"))?;
+            let name = source
+                .file_name()
+                .ok_or_else(|| anyhow!("invalid package directory"))?;
+            let destination = output
+                .join(export_category(&record.class_description))
+                .join(name);
+            copy_package(source, &destination)?;
+            Ok(ItemResult {
+                path: record.inf_path.clone(),
+                status: ItemStatus::Success,
+                message: destination.display().to_string(),
+                code: None,
+            })
+        };
+        batch
+            .items
+            .push(export().unwrap_or_else(|e| ItemResult::error(record.inf_path.clone(), e)));
+    }
+    Ok(batch)
+}
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+    #[test]
+    fn sanitizes_categories_and_preserves_package_content_and_time() {
+        assert_eq!(
+            export_category("A/B:C*D?E\"F<G>H|I\\J"),
+            "A_B_C_D_E_F_G_H_I_J"
+        );
+        assert_eq!(export_category(".."), "_");
+        assert_eq!(export_category("CON"), "_CON");
+        assert!(!export_category("").is_empty());
+        let temp = crate::temp_workspace::TempWorkspace::create("export-test").unwrap();
+        let source = temp.path().join("source");
+        let dest = temp.path().join("output/package");
+        std::fs::create_dir_all(source.join("nested")).unwrap();
+        std::fs::write(source.join("driver.inf"), b"INF").unwrap();
+        std::fs::write(source.join("nested/file.sys"), b"driver payload").unwrap();
+        let time = filetime::FileTime::from_unix_time(1600000000, 0);
+        filetime::set_file_mtime(source.join("nested/file.sys"), time).unwrap();
+        copy_package(&source, &dest).unwrap();
+        assert_eq!(
+            std::fs::read(dest.join("nested/file.sys")).unwrap(),
+            b"driver payload"
+        );
+        assert_eq!(
+            filetime::FileTime::from_last_modification_time(
+                &std::fs::metadata(dest.join("nested/file.sys")).unwrap()
+            ),
+            time
+        );
+        assert!(copy_package(&source, &source.join("recursive")).is_err());
+        assert!(export_records(&[], &dest).is_err());
+    }
+}

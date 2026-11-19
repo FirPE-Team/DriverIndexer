@@ -111,20 +111,15 @@ impl DriverManger {
         let backend = NativeBackend::new(&self.target, &api)?;
         Ok(import_infs(&backend, &paths, !self.target.offline))
     }
-    #[allow(clippy::too_many_arguments)]
     pub fn export_driver(
         &self,
-        root: &Path,
         output: &Path,
-        system: bool,
-        only: bool,
-        inf: Option<&str>,
-        class: Option<&[String]>,
-        exclude: Option<&[String]>,
-        provider: Option<&[String]>,
-    ) -> Result<(u32, u32, u32)> {
-        self.legacy()?
-            .export_driver(root, output, system, only, inf, class, exclude, provider)
+        filter: crate::driver_management::DriverFilter<'_>,
+    ) -> Result<crate::driver_management::BatchResult> {
+        use crate::driver_management::*;
+        let api = self.target.api()?;
+        let backend = NativeBackend::new(&self.target, &api)?;
+        export_records(&enumerate(&backend, &self.target.windows, filter)?, output)
     }
     #[allow(clippy::too_many_arguments)]
     pub fn remove_driver(

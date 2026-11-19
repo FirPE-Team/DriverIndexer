@@ -136,3 +136,4 @@ management:
   not-applicable: "適用外"
   failed: "失敗"
   summary: "合計 %{total} 件：成功 %{success}、失敗 %{fail}、適用外 %{not_applicable}"
+  unknown: "不明"

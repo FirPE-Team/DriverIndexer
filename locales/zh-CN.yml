@@ -140,3 +140,4 @@ management:
   not-applicable: "不适用"
   failed: "失败"
   summary: "共处理 %{total} 个驱动，成功 %{success}，失败 %{fail}，不适用 %{not_applicable}"
+  unknown: "未知"
