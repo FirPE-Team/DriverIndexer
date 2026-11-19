@@ -170,6 +170,23 @@ View index subcommand, used to view information in driver index files.
 
 List drivers in the driver store of the current system or offline system.
 
+Management commands use the independently implemented Dism++ workflow described in
+[the reference notes](docs/dismpp-driver-management.md) and
+[the validation report](docs/driver-management-validation.md). By default they select third-party
+published INFs in the current level of `Windows/INF`. `--system` includes inbox packages;
+`--system-only` selects only inbox packages. These two options conflict.
+
+Class, provider and INF name comparisons ignore letter case. Repeated values of one filter are
+combined with OR; different filters are combined with AND; class exclusion takes precedence.
+Export and removal accept either a published name such as `oem0.inf` or the original INF name
+with `--inf`. List output includes both names, version, date, class GUID, repository path,
+`Critical` (membership in the reference's 17 class GUIDs), and `Inbox`. `Size` is allocated
+disk space in bytes; `File Bytes` is the logical file content size. Each package appears once.
+
+An empty list succeeds. Export and removal report an error when no package matches.
+Batch operations continue after individual errors and print successful, failed and not applicable
+counts. A real failure produces a nonzero exit code; not applicable alone succeeds.
+
 `DriverIndexer.exe list <system drive path>`
 
 - Options
@@ -194,15 +211,17 @@ Import drivers into the system driver store.
 
 `DriverIndexer.exe import <system drive path> <driver path>`
 
-- Driver path formats: compressed packages (limited to formats supported by 7zip), directory formats.
+- Driver path formats: one INF, a directory searched recursively, or a compressed package supported by 7zip.
 - Supports wildcards (`*`, `?`) for matching multiple driver packages.
+- Already stored packages succeed without another import. INFs without applicable target entries
+  are reported as not applicable. The default processes every INF for the target system.
 
 - Options
 
 | **Parameter**           | **Short Parameter** | **Description**                                                    |
 |-------------------------|---------------------|--------------------------------------------------------------------|
 | `--password <password>` | `-p`                | Specify driver package password for extracting the driver package. |
-| `--match-device`        | `-m`                | Match current system devices, default match all devices.           |
+| `--match-device`        | `-m`                | Restrict imports using devices in the running environment, including when servicing an offline image. |
 
 - Examples
     - `DriverIndexer.exe import C:\ D:\netcard.7z`
@@ -212,6 +231,10 @@ Import drivers into the system driver store.
 ### Export Drivers
 
 Export specific drivers from the system driver store.
+
+Copies the complete stored package to `<export directory>/<localized class description>/<repository package directory>`,
+including subdirectories and file contents, and preserves file/directory timestamps. Unknown classes
+use a localized fallback. Characters `\/:*?"<>|` in the class directory name become `_`.
 
 `DriverIndexer.exe export <system drive path> <export directory>`
 
@@ -237,16 +260,24 @@ Export specific drivers from the system driver store.
 
 Remove drivers from the system driver store.
 
+Requires a selection filter or `--all`. Only OEM published packages can be removed. Selecting an
+inbox package reports an unsupported operation; `--all` retains this OEM check. Online removal
+handles bound devices before critical-package unreflection and store deletion. Offline removal
+operates on the selected image's store.
+
 `DriverIndexer.exe remove <system drive path>`
 
 - Options
 
 | **Parameter**                  | **Short Parameter** | **Description**                                                                                                                           |
 |--------------------------------|---------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| `--system`                    | `-s`                | Include inbox packages in selection; inbox removal is unsupported. |
+| `--system-only`               | -                   | Select inbox packages and report unsupported removal. |
 | `--inf <inf file name>`        | `-i`                | Specify driver inf file name, only remove the specified driver.                                                                           |
 | `--class <driver class>`       | `-c`                | **Include** the specified driver class, only remove drivers of the specified class. Multiple classes can be specified repeatedly.         |
+| `--exclude-class <driver class>` | `-e`              | Exclude the specified classes from selection; repeat for multiple classes. |
 | `--provider <driver provider>` | `-p`                | **Include** the specified driver provider, only remove drivers of the specified provider. Multiple providers can be specified repeatedly. |
-| `--all`                        | `-a`                | Remove all drivers.                                                                                                                       |
+| `--all`                        | `-a`                | Allow an unfiltered selection; other filters and the OEM check still apply. |
 
 - Examples
     - `DriverIndexer.exe remove C:\ --inf netcard.inf`
@@ -349,7 +380,7 @@ The default test suite is pure logic and does not enumerate devices or require e
 ```powershell
 cargo fmt -- --check
 cargo check --all-targets
-cargo test --lib --no-fail-fast
+cargo test --all-targets
 cargo clippy --all-targets --all-features -- -D warnings
 cargo build --release
 ```
@@ -361,6 +392,26 @@ cargo test --test windows_manual -- --ignored
 ```
 
 Set `DRIVERINDEXER_MISSING_ONLY=1` to restrict enumeration, or set `DRIVERINDEXER_CATALOG` for signature verification.
+
+The driver management round trip is ignored by default. It imports, repeats the import, checks
+enumeration, exports by published and original INF names, compares every stored file, then removes
+only the newly published package. It requires elevation and an explicit opt-in, and rejects any
+target other than the designated disposable image `D:\Project\FirPE\Mount`:
+
+```powershell
+$env:DRIVERINDEXER_OFFLINE_WRITE_TEST = '1'
+$env:DRIVERINDEXER_OFFLINE_TEST_ROOT = 'D:\Project\FirPE\Mount'
+$env:DRIVERINDEXER_TEST_INF = 'D:\path\to\extracted\vm3d.inf'
+try {
+    cargo test --test driver_management_offline -- --ignored --nocapture
+} finally {
+    Remove-Item Env:DRIVERINDEXER_OFFLINE_WRITE_TEST, Env:DRIVERINDEXER_OFFLINE_TEST_ROOT, Env:DRIVERINDEXER_TEST_INF
+}
+```
+
+Use a fixture absent from the image. The CLI executable is tested because it carries the product
+Windows compatibility manifest. x86 and ARM64 compilation checks do not establish runtime
+compatibility; legacy Windows and online writes remain untested on real systems in this validation.
 
 ### Environment Requirements
 

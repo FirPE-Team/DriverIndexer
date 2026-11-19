@@ -177,23 +177,25 @@ pub struct DriverFilter<'a> {
 }
 impl DriverFilter<'_> {
     pub fn matches(&self, record: &DriverRecord) -> bool {
+        let equal = |left: &str, right: &str| {
+            left.eq_ignore_ascii_case(right) || left.to_lowercase() == right.to_lowercase()
+        };
         let contains = |values: Option<&[String]>, value: &str| {
-            values.is_none_or(|v| v.iter().any(|s| s.eq_ignore_ascii_case(value)))
+            values.is_none_or(|v| v.iter().any(|s| equal(s, value)))
         };
         (!self.system_only || record.inbox)
             && (self.include_system || self.system_only || !record.inbox)
             && self.inf.is_none_or(|inf| {
-                record.published_name.eq_ignore_ascii_case(inf)
+                equal(&record.published_name, inf)
                     || record
                         .inf_path
                         .file_name()
-                        .is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case(inf))
+                        .is_some_and(|n| equal(&n.to_string_lossy(), inf))
             })
             && contains(self.class, &record.info.class_name)
-            && !self.exclude_class.is_some_and(|v| {
-                v.iter()
-                    .any(|c| c.eq_ignore_ascii_case(&record.info.class_name))
-            })
+            && !self
+                .exclude_class
+                .is_some_and(|v| v.iter().any(|c| equal(c, &record.info.class_name)))
             && contains(self.provider, &record.info.provider_name)
     }
 }
@@ -410,6 +412,18 @@ mod tests {
             }
             .matches(&inbox)
         );
+        let mut localized = r;
+        localized.info.provider_name = "ÉDITEUR".into();
+        localized.inf_path = PathBuf::from("repo/Ädapter.inf");
+        let provider = vec!["éditeur".into()];
+        assert!(
+            DriverFilter {
+                provider: Some(&provider),
+                inf: Some("ädapter.INF"),
+                ..Default::default()
+            }
+            .matches(&localized)
+        );
     }
     #[test]
     fn current_layer_enumeration_and_recursive_size() {
@@ -440,6 +454,12 @@ impl ItemResult {
                         .map(|n| n as u32)
                 })
             });
+        let code = code.or_else(|| {
+            error.chain().find_map(|e| {
+                e.downcast_ref::<windows::core::Error>()
+                    .map(|e| e.code().0 as u32)
+            })
+        });
         Self {
             path,
             status: ItemStatus::Failed,
@@ -731,11 +751,17 @@ pub fn copy_package(source: &Path, destination: &Path) -> Result<()> {
         let meta = entry.metadata()?;
         if entry.file_type().is_dir() {
             std::fs::create_dir_all(&target)?;
+            if !target.canonicalize()?.starts_with(&to) {
+                return Err(anyhow!("export directory escapes package root"));
+            }
             directories.push((target, meta));
         } else if entry.file_type().is_file() {
             // Existing links must not redirect an overwrite outside the export tree.
             if std::fs::symlink_metadata(&target).is_ok_and(|m| m.file_type().is_symlink()) {
                 return Err(anyhow!("export target is a reparse point"));
+            }
+            if !target.parent().unwrap().canonicalize()?.starts_with(&to) {
+                return Err(anyhow!("export file escapes package root"));
             }
             std::fs::copy(entry.path(), &target)?;
             preserve_times(&target, &meta)?;
@@ -772,6 +798,14 @@ pub fn export_records(records: &[DriverRecord], output: &Path) -> Result<BatchRe
             let destination = output
                 .join(export_category(&record.class_description))
                 .join(name);
+            std::fs::create_dir_all(output)?;
+            std::fs::create_dir_all(&destination)?;
+            if !destination
+                .canonicalize()?
+                .starts_with(output.canonicalize()?)
+            {
+                return Err(anyhow!("export directory escapes output root"));
+            }
             copy_package(source, &destination)?;
             Ok(ItemResult {
                 path: record.inf_path.clone(),
@@ -897,4 +931,21 @@ pub fn package_allocated_size(path: &Path) -> Result<u64> {
             .ok_or_else(|| anyhow!("allocated package size overflow"))?;
     }
     Ok(total)
+}
+
+pub fn discover_source_infs(path: &Path) -> Result<Vec<PathBuf>> {
+    let mut paths = Vec::new();
+    for entry in walkdir::WalkDir::new(path).follow_links(false) {
+        let entry = entry?;
+        if entry.file_type().is_file()
+            && entry
+                .path()
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("inf"))
+        {
+            paths.push(entry.into_path());
+        }
+    }
+    paths.sort_by_key(|p| p.to_string_lossy().to_ascii_lowercase());
+    Ok(paths)
 }

@@ -152,6 +152,18 @@
 
 列出当前系统或离线系统的驱动存储中的驱动。
 
+四项管理命令独立实现 Dism++ 的驱动管理流程，详见[基准行为记录](docs/dismpp-driver-management.md)
+和[验收报告](docs/driver-management-validation.md)。默认选择 `Windows/INF` 当前层的第三方发布包；
+`--system` 包含内置包，`--system-only` 仅选择内置包，两项不能同时使用。
+
+类别、厂商和 INF 名比较忽略大小写。同一筛选条件中的多个值取并集，不同条件取交集，排除类别优先。
+导出和删除的 `--inf` 同时接受 `oem0.inf` 这样的发布名和原始 INF 名。列举每个包仅输出一次，包含两种名称、
+版本、日期、类别 GUID、仓库路径、`Critical`（基准固定 17 类 GUID 的关键标识）和 `Inbox`。
+`Size` 是磁盘分配字节数，`File Bytes` 是文件内容的逻辑字节数。
+
+列举空结果正常退出；导出和删除没有匹配包时返回错误。批量操作在单项失败后继续，最终输出成功、失败、
+不适用统计；真实失败使退出码非零，仅有不适用项仍正常退出。
+
 `DriverIndexer.exe list <系统盘路径>`
 
 - 选项
@@ -176,15 +188,16 @@
 
 `DriverIndexer.exe import <系统盘路径> <驱动路径>`
 
-- 驱动路径格式：压缩包（限 7zip 所支持的格式）、目录格式。
+- 驱动路径格式：单个 INF、递归搜索的目录、压缩包（限 7zip 所支持的格式）。
 - 支持通配符(`*`、`?`)，用于匹配多个驱动包。
+- 已入库的包按成功处理，不重复入库；没有适用目标条目的 INF 计为不适用。默认按目标系统处理所有 INF。
 
 - 选项
 
 | **参数**            | **短参数** | **描述**             |
 |-------------------|---------|--------------------|
 | `--password <密码>` | `-p`    | 指定驱动包密码，用于解压驱动包。   |
-| `--match-device`  | `-m`    | 匹配当前系统设备，默认匹配所有设备。 |
+| `--match-device`  | `-m`    | 按当前运行环境的设备筛选导入项；处理离线镜像时也匹配运行环境设备。 |
 
 - 示例
     - `DriverIndexer.exe import C:\ D:\netcard.7z`
@@ -194,6 +207,9 @@
 ### 导出驱动
 
 从系统驱动存储中导出特定驱动。
+
+完整复制到 `<导出目录>/<本地化类别描述>/<原仓库包目录>`，包含文件内容和子目录，并保留文件及目录时间。
+未知类别使用本地化回退名称，类别目录名中的 `\/:*?"<>|` 替换为 `_`。
 
 `DriverIndexer.exe export <系统盘路径> <导出目录>`
 
@@ -219,18 +235,22 @@
 
 从系统驱动存储中删除驱动。
 
+必须提供选择条件或 `--all`。仅允许删除 OEM 发布包；选中内置包时明确报告不支持，`--all` 同样执行 OEM 校验。
+在线删除先处理绑定设备，再执行关键包解除反射和仓库删除；离线删除操作所选镜像的仓库。
+
 `DriverIndexer.exe remove <系统盘路径>`
 
 - 选项
 
 | **参数**               | **短参数** | **描述**                                |
 |----------------------|---------|---------------------------------------|
-| `--system`           | `-s`    | 包含系统自带的驱动。                            |
-| `--system-only`      | -       | 仅删除系统自带驱动。                            |
+| `--system`           | `-s`    | 选择时包含内置驱动；内置包删除会报告不支持。 |
+| `--system-only`      | -       | 仅选择内置驱动，并报告不支持删除。 |
 | `--inf <inf文件名>`     | `-i`    | 指定驱动inf文件名，仅删除指定驱动。                   |
 | `--class <驱动类别>`     | `-c`    | **包含**指定的驱动类别，仅删除指定类别驱动。多个类别可重复指定。    |
+| `--exclude-class <驱动类别>` | `-e` | 排除指定的类别；多个类别可重复指定。 |
 | `--provider <驱动供应商>` | `-p`    | **包含**指定的驱动供应商，仅删除指定供应商驱动。多个供应商可重复指定。 |
-| `--all`              | `-a`    | 删除所有驱动。                               |
+| `--all`              | `-a`    | 允许不指定筛选条件；其他筛选条件及 OEM 校验仍然生效。 |
 
 - 示例
     - `DriverIndexer.exe remove C:\ --inf netcard.inf`
@@ -324,7 +344,7 @@
 ```powershell
 cargo fmt -- --check
 cargo check --all-targets
-cargo test --lib --no-fail-fast
+cargo test --all-targets
 cargo clippy --all-targets --all-features -- -D warnings
 cargo build --release
 ```
@@ -336,6 +356,24 @@ cargo test --test windows_manual -- --ignored
 ```
 
 可设置 `DRIVERINDEXER_MISSING_ONLY=1` 仅枚举缺失驱动设备，设置 `DRIVERINDEXER_CATALOG` 指定签名验证文件。
+
+驱动管理闭环测试默认忽略。它会导入、重复导入、核对枚举，分别按发布名和原始名导出并逐文件比较，
+最后仅删除本轮新增发布包。测试要求管理员权限、显式启用，并限制目标为指定的可丢弃镜像
+`D:\Project\FirPE\Mount`，其他目标一律拒绝：
+
+```powershell
+$env:DRIVERINDEXER_OFFLINE_WRITE_TEST = '1'
+$env:DRIVERINDEXER_OFFLINE_TEST_ROOT = 'D:\Project\FirPE\Mount'
+$env:DRIVERINDEXER_TEST_INF = 'D:\path\to\extracted\vm3d.inf'
+try {
+    cargo test --test driver_management_offline -- --ignored --nocapture
+} finally {
+    Remove-Item Env:DRIVERINDEXER_OFFLINE_WRITE_TEST, Env:DRIVERINDEXER_OFFLINE_TEST_ROOT, Env:DRIVERINDEXER_TEST_INF
+}
+```
+
+请选择尚未入库的测试包。测试调用带产品 Windows 兼容清单的 CLI 可执行文件。
+x86、ARM64 编译通过不代表实际运行通过；旧版 Windows 运行和在线写入在本轮仍属于未实测项。
 
 ### 环境要求
 

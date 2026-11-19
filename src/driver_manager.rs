@@ -57,9 +57,7 @@ impl DriverManger {
         matched: bool,
     ) -> Result<crate::driver_management::BatchResult> {
         use crate::{
-            driver_management::*,
-            temp_workspace::TempWorkspace,
-            utils::{sevenzip::SevenZip, utils::get_file_list},
+            driver_management::*, temp_workspace::TempWorkspace, utils::sevenzip::SevenZip,
         };
         let workspace = TempWorkspace::create("import")?;
         let extracted = workspace.path().join("source");
@@ -84,7 +82,7 @@ impl DriverManger {
         {
             vec![source.to_path_buf()]
         } else {
-            get_file_list(base, "*.inf")?
+            discover_source_infs(base)?
         };
         paths.sort_by_key(|p| p.to_string_lossy().to_ascii_lowercase());
         if matched {

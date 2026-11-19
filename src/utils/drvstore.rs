@@ -325,6 +325,58 @@ impl Package<'_> {
 mod tests {
     use super::*;
     #[test]
+    fn owns_store_and_package_on_early_errors() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static STORES: AtomicUsize = AtomicUsize::new(0);
+        static PACKAGES: AtomicUsize = AtomicUsize::new(0);
+        unsafe extern "system" fn open(_: Wide, _: Wide, _: u32, _: usize) -> Handle {
+            11
+        }
+        unsafe extern "system" fn close(_: Handle) {
+            STORES.fetch_add(1, Ordering::SeqCst);
+        }
+        unsafe extern "system" fn package(_: Wide, _: u16, _: Wide, _: u32, _: usize) -> Handle {
+            22
+        }
+        unsafe extern "system" fn close_package(_: Handle) {
+            PACKAGES.fetch_add(1, Ordering::SeqCst);
+        }
+        unsafe extern "system" fn find(
+            _: Handle,
+            _: Wide,
+            _: u16,
+            _: Wide,
+            _: u32,
+            _: *mut u16,
+            _: u32,
+            _: *mut c_void,
+        ) -> i32 {
+            0
+        }
+        unsafe extern "system" fn version(_: Handle, _: *mut c_void) -> i32 {
+            0
+        }
+        let api = DriverStore {
+            lib: unsafe { Library::new("kernel32.dll") }.unwrap(),
+            open,
+            close,
+            open_package: package,
+            close_package_fn: close_package,
+            find,
+            version,
+            sized_version: true,
+        };
+        let work = || -> Result<(), DrvstoreError> {
+            let _store = api.session(Path::new("test/Windows"), true)?;
+            let package = api.package(Path::new("test.inf"), 9)?;
+            package.info()?;
+            Ok(())
+        };
+        assert!(work().is_err());
+        assert_eq!(STORES.load(Ordering::SeqCst), 1);
+        assert_eq!(PACKAGES.load(Ordering::SeqCst), 1);
+    }
+    #[test]
     fn decodes_sized_and_legacy_layouts() {
         for sized in [false, true] {
             let mut b = [0u8; 0x6f0];

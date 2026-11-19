@@ -489,8 +489,12 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             password,
             match_device,
         } => {
-            let manager = DriverManger::new(system_drive)?;
-            let password = password.as_deref().map(try_decrypt_password).transpose()?;
+            let manager = DriverManger::new(system_drive).map_err(management_error)?;
+            let password = password
+                .as_deref()
+                .map(try_decrypt_password)
+                .transpose()
+                .map_err(management_error)?;
             let paths = if driver_path
                 .file_name()
                 .is_some_and(|n| n.to_string_lossy().contains(['*', '?']))
@@ -498,12 +502,15 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
                 get_file_list(
                     driver_path.parent().unwrap_or(std::path::Path::new(".")),
                     &driver_path.file_name().unwrap().to_string_lossy(),
-                )?
+                )
+                .map_err(management_error)?
             } else {
                 vec![driver_path.clone()]
             };
             if paths.is_empty() {
-                return Err(anyhow!("No driver package matched the input"));
+                return Err(management_error(anyhow!(
+                    "No driver package matched the input"
+                )));
             }
             let mut all = driver_management::BatchResult::default();
             for path in paths {
@@ -528,18 +535,20 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             exclude_class,
             provider,
         } => {
-            let manager = DriverManger::new(system_drive)?;
-            let result = manager.export_driver(
-                export_path,
-                driver_management::DriverFilter {
-                    include_system: *include_system,
-                    system_only: *system_only,
-                    inf: inf.as_deref(),
-                    class: class.as_deref(),
-                    exclude_class: exclude_class.as_deref(),
-                    provider: provider.as_deref(),
-                },
-            )?;
+            let manager = DriverManger::new(system_drive).map_err(management_error)?;
+            let result = manager
+                .export_driver(
+                    export_path,
+                    driver_management::DriverFilter {
+                        include_system: *include_system,
+                        system_only: *system_only,
+                        inf: inf.as_deref(),
+                        class: class.as_deref(),
+                        exclude_class: exclude_class.as_deref(),
+                        provider: provider.as_deref(),
+                    },
+                )
+                .map_err(management_error)?;
             driver_manager::report_batch(&result);
             result.ensure_success()
         }
@@ -554,15 +563,17 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             provider,
             all: _,
         } => {
-            let manager = DriverManger::new(system_drive)?;
-            let result = manager.remove_driver(driver_management::DriverFilter {
-                include_system: *include_system,
-                system_only: *system_only,
-                inf: inf.as_deref(),
-                class: class.as_deref(),
-                exclude_class: exclude_class.as_deref(),
-                provider: provider.as_deref(),
-            })?;
+            let manager = DriverManger::new(system_drive).map_err(management_error)?;
+            let result = manager
+                .remove_driver(driver_management::DriverFilter {
+                    include_system: *include_system,
+                    system_only: *system_only,
+                    inf: inf.as_deref(),
+                    class: class.as_deref(),
+                    exclude_class: exclude_class.as_deref(),
+                    provider: provider.as_deref(),
+                })
+                .map_err(management_error)?;
             driver_manager::report_batch(&result);
             result.ensure_success()
         }
@@ -703,4 +714,9 @@ fn try_decrypt_password(input: &str) -> anyhow::Result<String> {
 
     let cipher_text = &input[ENC_PREFIX.len()..];
     decrypt_password(cipher_text)
+}
+
+fn management_error(error: anyhow::Error) -> anyhow::Error {
+    write_console(ConsoleType::Error, &format!("{error:#}"));
+    error
 }
