@@ -23,8 +23,34 @@ impl DriverManger {
         exclude: Option<&[String]>,
         provider: Option<&[String]>,
     ) -> Result<()> {
-        self.legacy()?
-            .list_driver(root, system, only, class, exclude, provider)
+        let _ = root;
+        let api = self.target.api()?;
+        let backend = crate::driver_management::NativeBackend::new(&self.target, &api)?;
+        let filter = crate::driver_management::DriverFilter {
+            include_system: system,
+            system_only: only,
+            class,
+            exclude_class: exclude,
+            provider,
+            inf: None,
+        };
+        for r in crate::driver_management::enumerate(&backend, &self.target.windows, filter)? {
+            crate::utils::console::write_plain(&format!(
+                "Driver Info:\nInf Path: {}\nOEM Name: {}\nClass Name: {}\nClass Desc: {}\nClass GUID: {{{:?}}}\nProvider: {}\nVersion: {}\nDate: {}\nSize: {}\nCritical: {}\nInbox: {}\n",
+                r.inf_path.display(),
+                r.published_name,
+                r.info.class_name,
+                r.class_description,
+                r.info.class_guid,
+                r.info.provider_name,
+                r.info.driver_version,
+                crate::utils::utils::filetime_to_string(&r.info.driver_date)?,
+                r.size_bytes,
+                r.critical,
+                r.inbox
+            ));
+        }
+        Ok(())
     }
     pub fn import_driver(
         &self,
