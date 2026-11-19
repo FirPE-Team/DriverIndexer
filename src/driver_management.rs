@@ -84,6 +84,7 @@ pub struct DriverRecord {
     pub critical: bool,
     pub inbox: bool,
     pub size_bytes: u64,
+    pub allocated_bytes: u64,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ItemStatus {
@@ -306,6 +307,7 @@ pub fn enumerate(
                 class_description,
                 inbox,
                 size_bytes: 0,
+                allocated_bytes: 0,
             };
             if !filter.matches(&record) {
                 return Ok(None);
@@ -316,6 +318,7 @@ pub fn enumerate(
                     .parent()
                     .ok_or_else(|| anyhow!("invalid repository INF path"))?,
             )?;
+            record.allocated_bytes = package_allocated_size(record.inf_path.parent().unwrap())?;
             Ok(Some(record))
         };
         match read() {
@@ -350,6 +353,7 @@ mod tests {
             critical: false,
             inbox: false,
             size_bytes: 0,
+            allocated_bytes: 0,
         }
     }
     #[test]
@@ -416,6 +420,8 @@ mod tests {
         std::fs::write(inf.join("nested/hidden.inf"), b"12345").unwrap();
         assert_eq!(published_infs(temp.path()).unwrap().len(), 1);
         assert_eq!(package_size(&inf).unwrap(), 8);
+        std::fs::write(inf.join("payload.sys"), vec![7u8; 10000]).unwrap();
+        assert!(package_allocated_size(&inf).unwrap() >= 10000);
     }
 }
 
@@ -570,6 +576,7 @@ mod workflow_tests {
             critical: true,
             inbox: false,
             size_bytes: 0,
+            allocated_bytes: 0,
         };
         f.trace.borrow_mut().clear();
         let records = vec![record.clone()];
@@ -859,4 +866,35 @@ pub fn remove_records(
         );
     }
     Ok(batch)
+}
+
+/// Dism++ sums FILE_FULL_DIR_INFORMATION.AllocationSize, rather than EndOfFile.
+/// Keep logical bytes separately so exported content manifests remain meaningful.
+pub fn package_allocated_size(path: &Path) -> Result<u64> {
+    use std::os::windows::io::AsRawHandle;
+    use windows::Win32::{
+        Foundation::HANDLE,
+        Storage::FileSystem::{FILE_STANDARD_INFO, FileStandardInfo, GetFileInformationByHandleEx},
+    };
+    let mut total = 0u64;
+    for entry in walkdir::WalkDir::new(path).follow_links(false) {
+        let entry = entry?;
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let file = std::fs::File::open(entry.path())?;
+        let mut info = FILE_STANDARD_INFO::default();
+        unsafe {
+            GetFileInformationByHandleEx(
+                HANDLE(file.as_raw_handle()),
+                FileStandardInfo,
+                (&mut info as *mut FILE_STANDARD_INFO).cast(),
+                std::mem::size_of::<FILE_STANDARD_INFO>() as u32,
+            )
+        }?;
+        total = total
+            .checked_add(u64::try_from(info.AllocationSize)?)
+            .ok_or_else(|| anyhow!("allocated package size overflow"))?;
+    }
+    Ok(total)
 }

@@ -33,7 +33,7 @@ impl DriverManger {
         };
         for r in crate::driver_management::enumerate(&backend, &self.target.windows, filter)? {
             crate::utils::console::write_plain(&format!(
-                "Driver Info:\nInf Path: {}\nOEM Name: {}\nClass Name: {}\nClass Desc: {}\nClass GUID: {{{:?}}}\nProvider: {}\nVersion: {}\nDate: {}\nSize: {}\nCritical: {}\nInbox: {}\n",
+                "Driver Info:\nInf Path: {}\nOEM Name: {}\nClass Name: {}\nClass Desc: {}\nClass GUID: {{{:?}}}\nProvider: {}\nVersion: {}\nDate: {}\nSize: {}\nFile Bytes: {}\nCritical: {}\nInbox: {}\n",
                 r.inf_path.display(),
                 r.published_name,
                 r.info.class_name,
@@ -42,6 +42,7 @@ impl DriverManger {
                 r.info.provider_name,
                 r.info.driver_version,
                 crate::utils::utils::filetime_to_string(&r.info.driver_date)?,
+                r.allocated_bytes,
                 r.size_bytes,
                 r.critical,
                 r.inbox

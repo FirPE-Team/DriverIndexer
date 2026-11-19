@@ -24,7 +24,7 @@ included in the product or committed as part of this work.
 | Enumerate only files in Windows/INF, resolve repository INF, skip/log unresolved entries | CBSHost `0x180009188`, `0x180007c14` |
 | UI groups class description, then provider; leaf is INF plus four-part version | main `0x1400a5304` |
 | Critical is membership in 17 class GUIDs, not the version-info flags | CBSHost `0x1800096f8`, table `0x180020320` |
-| Size is a directory traversal, not the API structure's size field | main `0x1400a5600`, `0x140076c10` |
+| Size sums directory entries’ AllocationSize (disk allocation), not logical length or API structure size | main `0x1400a5600`, `0x140076c10` |
 | Recursive case-insensitive INF discovery | main `0x1400a63bc` |
 | Already in store succeeds; open package, enumerate a driver entry; none -> 0x8007000a; import; optionally reflect critical | CBSHost `0x180008a34`, callback `0x180008c60` |
 | Add processes every INF and separates success / not applicable / failure | main `0x1400a65b8` |
