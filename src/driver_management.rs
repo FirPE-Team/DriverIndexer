@@ -415,3 +415,189 @@ mod tests {
         assert_eq!(package_size(&inf).unwrap(), 8);
     }
 }
+
+impl ItemResult {
+    pub fn error(path: PathBuf, error: anyhow::Error) -> Self {
+        let code = error
+            .chain()
+            .find_map(|e| {
+                e.downcast_ref::<crate::utils::driver_store::DrvstoreError>()
+                    .and_then(|e| e.code())
+            })
+            .or_else(|| {
+                error.chain().find_map(|e| {
+                    e.downcast_ref::<std::io::Error>()
+                        .and_then(|e| e.raw_os_error())
+                        .map(|n| n as u32)
+                })
+            });
+        Self {
+            path,
+            status: ItemStatus::Failed,
+            message: format!("{error:#}"),
+            code,
+        }
+    }
+}
+pub fn import_infs(backend: &impl DriverBackend, paths: &[PathBuf], online: bool) -> BatchResult {
+    let mut batch = BatchResult::default();
+    for path in paths {
+        let import = || -> Result<ItemResult> {
+            if let Some(existing) = backend.find(path)? {
+                return Ok(ItemResult {
+                    path: path.clone(),
+                    status: ItemStatus::Success,
+                    message: format!("already imported: {}", existing.display()),
+                    code: None,
+                });
+            }
+            if !backend.applicable(path)? {
+                return Ok(ItemResult {
+                    path: path.clone(),
+                    status: ItemStatus::NotApplicable,
+                    message: String::new(),
+                    code: Some(0x8007000a),
+                });
+            }
+            let info = backend.info(path)?;
+            let imported = backend.import(path)?;
+            let mut warnings = Vec::new();
+            if is_critical(&info.class_guid)
+                && let Err(e) = backend.critical(&imported, false)
+            {
+                warnings.push(format!("critical reflection: {e:#}"));
+            }
+            if online && let Err(e) = backend.rescan() {
+                warnings.push(format!("rescan: {e:#}"));
+            }
+            Ok(ItemResult {
+                path: path.clone(),
+                status: ItemStatus::Success,
+                message: warnings.join("; "),
+                code: None,
+            })
+        };
+        batch
+            .items
+            .push(import().unwrap_or_else(|e| ItemResult::error(path.clone(), e)));
+    }
+    batch
+}
+
+#[cfg(test)]
+mod workflow_tests {
+    use super::*;
+    use std::cell::RefCell;
+    struct Fake {
+        trace: RefCell<Vec<&'static str>>,
+        existing: bool,
+        applicable: bool,
+        fail: Option<&'static str>,
+        critical: bool,
+    }
+    impl Fake {
+        fn new() -> Self {
+            Self {
+                trace: RefCell::new(Vec::new()),
+                existing: false,
+                applicable: true,
+                fail: None,
+                critical: true,
+            }
+        }
+        fn step(&self, name: &'static str) -> Result<()> {
+            self.trace.borrow_mut().push(name);
+            if self.fail == Some(name) {
+                Err(crate::utils::driver_store::DrvstoreError::Win32Error(5).into())
+            } else {
+                Ok(())
+            }
+        }
+    }
+    impl DriverBackend for Fake {
+        fn find(&self, _: &Path) -> Result<Option<PathBuf>> {
+            self.step("find")?;
+            Ok(self.existing.then(|| PathBuf::from("repo/driver.inf")))
+        }
+        fn info(&self, _: &Path) -> Result<DriverPackageVersionInfo> {
+            self.step("info")?;
+            Ok(DriverPackageVersionInfo {
+                architecture: 9,
+                provider_name: "Vendor".into(),
+                driver_date: Default::default(),
+                driver_version: "1.2.3.4".into(),
+                class_guid: windows::core::GUID::from_u128(if self.critical {
+                    CRITICAL_CLASSES[0]
+                } else {
+                    0
+                }),
+                class_name: "System".into(),
+                catalog_file: String::new(),
+            })
+        }
+        fn applicable(&self, _: &Path) -> Result<bool> {
+            self.step("applicable")?;
+            Ok(self.applicable)
+        }
+        fn import(&self, _: &Path) -> Result<PathBuf> {
+            self.step("import")?;
+            Ok("repo/driver.inf".into())
+        }
+        fn critical(&self, _: &Path, remove: bool) -> Result<()> {
+            self.step(if remove { "unreflect" } else { "reflect" })
+        }
+        fn remove_devices(&self, _: &str, _: &Path) -> Result<()> {
+            self.step("devices")
+        }
+        fn delete(&self, _: &Path) -> Result<()> {
+            self.step("delete")
+        }
+        fn rescan(&self) -> Result<()> {
+            self.step("rescan")
+        }
+    }
+    #[test]
+    fn import_order_and_idempotence() {
+        let f = Fake::new();
+        let paths = vec!["driver.inf".into()];
+        assert_eq!(import_infs(&f, &paths, true).counts(), (1, 0, 0, 1));
+        assert_eq!(
+            *f.trace.borrow(),
+            ["find", "applicable", "info", "import", "reflect", "rescan"]
+        );
+        let f = Fake {
+            existing: true,
+            ..Fake::new()
+        };
+        assert!(import_infs(&f, &paths, false).ensure_success().is_ok());
+        assert_eq!(*f.trace.borrow(), ["find"]);
+    }
+    #[test]
+    fn not_applicable_and_errors_do_not_abort_batch() {
+        let paths = vec!["a.inf".into(), "b.inf".into()];
+        let f = Fake {
+            applicable: false,
+            ..Fake::new()
+        };
+        let b = import_infs(&f, &paths, false);
+        assert_eq!(b.counts(), (0, 0, 2, 2));
+        assert!(b.ensure_success().is_ok());
+        for step in ["find", "applicable", "info", "import"] {
+            let f = Fake {
+                fail: Some(step),
+                ..Fake::new()
+            };
+            let b = import_infs(&f, &paths, false);
+            assert_eq!(b.counts(), (0, 2, 0, 2));
+            assert!(b.ensure_success().is_err());
+            assert_eq!(b.items[0].code, Some(5));
+        }
+        for step in ["reflect", "rescan"] {
+            let f = Fake {
+                fail: Some(step),
+                ..Fake::new()
+            };
+            assert_eq!(import_infs(&f, &paths, true).counts(), (2, 0, 0, 2));
+        }
+    }
+}

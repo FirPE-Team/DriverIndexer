@@ -131,3 +131,8 @@ organize-driver-failed: "ドライバーの整理に失敗しました"
 driver-pack-info: "ドライバープログラムパッケージの作成"
 pack-driver-success: "ドライバーパッケージの作成に成功しました"
 pack-driver-failed: "ドライバーパッケージの作成に失敗しました"
+management:
+  success: "成功"
+  not-applicable: "適用外"
+  failed: "失敗"
+  summary: "合計 %{total} 件：成功 %{success}、失敗 %{fail}、適用外 %{not_applicable}"

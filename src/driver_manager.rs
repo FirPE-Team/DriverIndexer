@@ -54,13 +54,62 @@ impl DriverManger {
     }
     pub fn import_driver(
         &self,
-        root: &Path,
         source: &Path,
         password: Option<&str>,
         matched: bool,
-    ) -> Result<(u32, u32, u32)> {
-        self.legacy()?
-            .import_driver(root, source, password, matched)
+    ) -> Result<crate::driver_management::BatchResult> {
+        use crate::{
+            driver_management::*,
+            temp_workspace::TempWorkspace,
+            utils::{sevenzip::SevenZip, utils::get_file_list},
+        };
+        let workspace = TempWorkspace::create("import")?;
+        let extracted = workspace.path().join("source");
+        let base = if source.is_file()
+            && !source
+                .extension()
+                .is_some_and(|s| s.eq_ignore_ascii_case("inf"))
+        {
+            let zip = SevenZip::new()?;
+            zip.is_driver_package(source, password)?;
+            zip.extract_files_from_path(source, password, "*", &extracted)?;
+            extracted.as_path()
+        } else if source.is_file() {
+            source.parent().unwrap_or(Path::new("."))
+        } else {
+            source
+        };
+        let mut paths = if source.is_file()
+            && source
+                .extension()
+                .is_some_and(|s| s.eq_ignore_ascii_case("inf"))
+        {
+            vec![source.to_path_buf()]
+        } else {
+            get_file_list(base, "*.inf")?
+        };
+        paths.sort_by_key(|p| p.to_string_lossy().to_ascii_lowercase());
+        if matched {
+            let hardware = crate::hardware::enumerate_hardware(None, false)?;
+            let infos: Vec<_> = paths
+                .iter()
+                .filter_map(|p| crate::driver_index::InfInfo::parse_inf(base, p).ok())
+                .collect();
+            let selected = crate::command::match_driver_info(&hardware, &infos, None, None);
+            let mut keep = std::collections::BTreeSet::new();
+            for (_, candidates) in selected {
+                if let Some((info, _)) = candidates.first() {
+                    keep.insert(base.join(&info.path));
+                }
+            }
+            paths.retain(|p| keep.contains(p));
+        }
+        if paths.is_empty() {
+            return Err(anyhow::anyhow!(rust_i18n::t!("no-found-driver-currently")));
+        }
+        let api = self.target.api()?;
+        let backend = NativeBackend::new(&self.target, &api)?;
+        Ok(import_infs(&backend, &paths, !self.target.offline))
     }
     #[allow(clippy::too_many_arguments)]
     pub fn export_driver(
@@ -91,4 +140,41 @@ impl DriverManger {
         self.legacy()?
             .remove_driver(root, system, only, inf, class, provider, all)
     }
+}
+
+pub fn report_batch(batch: &crate::driver_management::BatchResult) {
+    use crate::{
+        driver_management::ItemStatus,
+        utils::console::{ConsoleType, write_console},
+    };
+    for item in &batch.items {
+        let (kind, key) = match item.status {
+            ItemStatus::Success => (ConsoleType::Success, "management.success"),
+            ItemStatus::NotApplicable => (ConsoleType::Info, "management.not-applicable"),
+            ItemStatus::Failed => (ConsoleType::Error, "management.failed"),
+        };
+        write_console(
+            kind,
+            &format!(
+                "{}: {} {}{}",
+                rust_i18n::t!(key),
+                item.path.display(),
+                item.message,
+                item.code
+                    .map(|n| format!(" [0x{n:08X}]"))
+                    .unwrap_or_default()
+            ),
+        );
+    }
+    let (success, fail, not_applicable, total) = batch.counts();
+    write_console(
+        ConsoleType::Info,
+        &rust_i18n::t!(
+            "management.summary",
+            success = success,
+            fail = fail,
+            not_applicable = not_applicable,
+            total = total
+        ),
+    );
 }

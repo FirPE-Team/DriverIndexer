@@ -131,3 +131,9 @@ organize-driver-failed: "Driver organization failed"
 driver-pack-info: "Create driver package"
 pack-driver-success: "Driver package creation successful"
 pack-driver-failed: "Driver package creation failed"
+
+management:
+  success: "Successful"
+  not-applicable: "Not applicable"
+  failed: "Failed"
+  summary: "Processed %{total} drivers: %{success} successful, %{fail} failed, %{not_applicable} not applicable"

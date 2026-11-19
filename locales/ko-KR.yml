@@ -131,3 +131,9 @@ organize-driver-failed: "드라이버 정리에 실패했습니다"
 driver-pack-info: "드라이버 프로그램 패키지 생성"
 pack-driver-success: "드라이버 프로그램 패키지 생성에 성공했습니다"
 pack-driver-failed: "드라이버 프로그램 패키지 생성에 실패했습니다"
+
+management:
+  success: "성공"
+  not-applicable: "적용 불가"
+  failed: "실패"
+  summary: "총 %{total}개: 성공 %{success}, 실패 %{fail}, 적용 불가 %{not_applicable}"

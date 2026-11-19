@@ -131,3 +131,9 @@ organize-driver-failed: "整理驅動失敗"
 driver-pack-info: "建立驅動程式包"
 pack-driver-success: "建立驅動程式包成功"
 pack-driver-failed: "建立驅動程式包失敗"
+
+management:
+  success: "成功"
+  not-applicable: "不適用"
+  failed: "失敗"
+  summary: "共處理 %{total} 個驅動，成功 %{success}，失敗 %{fail}，不適用 %{not_applicable}"
