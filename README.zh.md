@@ -337,11 +337,29 @@ cargo test --test windows_manual -- --ignored
 
 可设置 `DRIVERINDEXER_MISSING_ONLY=1` 仅枚举缺失驱动设备，设置 `DRIVERINDEXER_CATALOG` 指定签名验证文件。
 
+### 原生归档后端
+
+归档操作使用仓库内独立的 `crates/bit7z` Rust crate，通过 C ABI 调用固定版本的 bit7z C++ 静态库。
+程序仅内嵌对应架构的 `7z.dll`，运行时不再释放或启动 `7z.exe`。bit7z 及其编译所需原生源码随仓库保存，构建时无需下载这些源码，也不需要 CMake。
+接口、依赖版本及许可证见 [bit7z crate 说明](crates/bit7z/README.md)。
+
+普通回归测试和本地驱动包验证：
+
+```powershell
+cargo test --workspace
+cargo test --test driver_archives -- --ignored
+cargo test --workspace --target i686-pc-windows-msvc
+cargo test --target i686-pc-windows-msvc --test driver_archives -- --ignored
+```
+
+驱动包测试使用 `testDrive/VMwareVMCI.7z` 和 `testDrive/DisplayVmWare.7z`，可通过 `DRIVERINDEXER_TEST_DRIVE` 指定其他输入目录。
+测试比较旧 CLI 基线的文件路径与 SHA-256，并验证索引和打包流程；不会执行生成的自解压 EXE 或安装驱动。
+
 ### 环境要求
 
-- Rust 1.65 或以上版本
-- VC-LTL
-- YY-Thunks
+- 支持 Rust 2024 edition 的 Rust 工具链，并满足依赖的最低版本要求
+- Visual Studio C++ Build Tools 和 Windows SDK；交叉编译需安装对应的 x86/ARM64 C++ 工具集及 Rust target
+- VC-LTL 和 YY-Thunks（x86/x64 release 的旧版 Windows 兼容处理；ARM64 使用原生工具链）
 
 ### 配置项目
 

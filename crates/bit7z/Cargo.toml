@@ -1,0 +1,10 @@
+[package]
+name = "bit7z"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-only"
+description = "Safe Windows Rust bridge to vendored bit7z and a caller-provided 7z.dll"
+links = "driverindexer_bit7z"
+
+[build-dependencies]
+cc = { version = "1.2", features = ["parallel"] }

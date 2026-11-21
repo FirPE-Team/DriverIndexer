@@ -1,0 +1,53 @@
+// This is an open source non-commercial project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+
+/*
+ * bit7z - A C++ static library to interface with the 7-zip shared libraries.
+ * Copyright (c) Riccardo Ostani - All Rights Reserved.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ */
+
+#include "bitarchiveitemoffset.hpp"
+
+#include "bitarchiveitem.hpp"
+#include "bitinputarchive.hpp"
+#include "bitpropvariant.hpp"
+
+#include <cstdint>
+
+namespace bit7z {
+
+BitArchiveItemOffset::BitArchiveItemOffset( const BitInputArchive& inputArchive, std::uint32_t itemIndex ) noexcept
+    : BitArchiveItem( itemIndex ), mArc{ std::cref( inputArchive ) } {}
+
+auto BitArchiveItemOffset::operator++() noexcept -> BitArchiveItemOffset& {
+    ++mItemIndex;
+    return *this;
+}
+
+auto BitArchiveItemOffset::operator++( int ) noexcept -> BitArchiveItemOffset { // NOLINT(cert-dcl21-cpp)
+    BitArchiveItemOffset oldValue = *this;
+    ++( *this );
+    return oldValue;
+}
+
+auto BitArchiveItemOffset::operator==( const BitArchiveItemOffset& other ) const noexcept -> bool {
+    return mItemIndex == other.mItemIndex;
+}
+
+auto BitArchiveItemOffset::operator!=( const BitArchiveItemOffset& other ) const noexcept -> bool {
+    return !( *this == other ); // NOLINT(*-redundant-parentheses)
+}
+
+auto BitArchiveItemOffset::itemProperty( BitProperty property ) const -> BitPropVariant {
+    return mArc.get().itemProperty( mItemIndex, property );
+}
+
+auto BitArchiveItemOffset::hasProperty( BitProperty property ) const -> bool {
+    return mArc.get().itemHasProperty( mItemIndex, property );
+}
+
+} // namespace bit7z

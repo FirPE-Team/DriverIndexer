@@ -1,0 +1,126 @@
+// This is an open source non-commercial project. Dear PVS-Studio, please check it.
+// PVS-Studio Static Code Analyzer for C, C++ and C#: http://www.viva64.com
+
+/*
+ * bit7z - A C++ static library to interface with the 7-zip shared libraries.
+ * Copyright (c) Riccardo Ostani - All Rights Reserved.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ */
+
+#include "internal/failuresourcecategory.hpp"
+
+#include "biterror.hpp"
+#include "internal/openerror.hpp"
+#include "internal/operationcategory.hpp"
+#include "internal/operationresult.hpp"
+
+#include <string>
+#include <system_error>
+
+namespace bit7z {
+
+auto FailureSourceCategory::name() const noexcept -> const char* {
+    return "failure-source";
+}
+
+auto FailureSourceCategory::message( int errorValue ) const -> std::string {
+    switch ( static_cast< BitFailureSource >( errorValue ) ) {
+        case BitFailureSource::CRCError:
+            return operationCategory().message( NOperationResult::kCRCError );
+        case BitFailureSource::DataAfterEnd:
+            return operationCategory().message( NOperationResult::kDataAfterEnd );
+        case BitFailureSource::DataError:
+            return operationCategory().message( NOperationResult::kDataError );
+        case BitFailureSource::FormatDetectionError:
+            return "Format detection error.";
+        case BitFailureSource::HeadersError:
+            return operationCategory().message( NOperationResult::kHeadersError );
+        case BitFailureSource::InvalidArchive:
+            return operationCategory().message( NOperationResult::kIsNotArc );
+        case BitFailureSource::InvalidArgument:
+            return "Invalid argument.";
+        case BitFailureSource::NoSuchItem:
+            return "No such item.";
+        case BitFailureSource::OperationNotPermitted:
+            return "Operation not permitted.";
+        case BitFailureSource::OperationNotSupported:
+            return "Operation not supported.";
+        case BitFailureSource::UnavailableData:
+            return operationCategory().message( NOperationResult::kUnavailable );
+        case BitFailureSource::UnexpectedEnd:
+            return operationCategory().message( NOperationResult::kUnexpectedEnd );
+        case BitFailureSource::WrongPassword:
+            return "Wrong password.";
+        default:
+            return "Unknown failure source.";
+    }
+}
+
+auto FailureSourceCategory::equivalent( int error, const std::error_condition& condition ) const noexcept -> bool {
+    return default_error_condition( error ) == condition;
+}
+
+auto FailureSourceCategory::equivalent( const std::error_code& code, int condition ) const noexcept -> bool {
+    switch ( static_cast< BitFailureSource >( condition ) ) {
+        case BitFailureSource::CRCError:
+            return code == OperationResult::CRCError ||
+                   code == OpenError::CRCError ||
+                   code == OperationResult::CRCErrorEncrypted;
+        case BitFailureSource::DataAfterEnd:
+            return code == OperationResult::DataAfterEnd || code == OpenError::DataAfterEnd;
+        case BitFailureSource::DataError:
+            return code == OperationResult::DataError ||
+                   code == OpenError::DataError ||
+                   code == OperationResult::DataErrorEncrypted;
+        case BitFailureSource::InvalidArchive:
+            return code == OperationResult::IsNotArc ||
+                   code == OpenError::IsNotArc ||
+                   code == OpenError::UnconfirmedStart ||
+                   code == BitError::NoMatchingSignature;
+        case BitFailureSource::InvalidArgument:
+            return code == std::errc::invalid_argument;
+        case BitFailureSource::HeadersError:
+            return code == OperationResult::HeadersError || code == OpenError::HeadersError;
+        case BitFailureSource::FormatDetectionError:
+            return code == BitError::NoMatchingSignature;
+        case BitFailureSource::NoSuchItem:
+            return code == BitError::NoMatchingItems ||
+                   code == BitError::NoMatchingFile ||
+                   code == std::errc::no_such_file_or_directory;
+        case BitFailureSource::OperationNotSupported:
+            return code == std::errc::operation_not_supported ||
+                   code == std::errc::not_supported ||
+                   code == std::errc::function_not_supported ||
+                   code == OperationResult::UnsupportedMethod ||
+                   code == OpenError::UnsupportedMethod ||
+                   code == OpenError::UnsupportedFeature;
+        case BitFailureSource::OperationNotPermitted:
+            return code == std::errc::operation_not_permitted ||
+                   code == BitError::ItemPathOutsideOutputDirectory ||
+                   code == BitError::ItemHasAbsolutePath ||
+                   code == BitError::InvalidItemPath;
+        case BitFailureSource::UnavailableData:
+            return code == OperationResult::Unavailable || code == OpenError::UnavailableStart;
+        case BitFailureSource::UnexpectedEnd:
+            return code == OperationResult::UnexpectedEnd || code == OpenError::UnexpectedEnd;
+        case BitFailureSource::WrongPassword:
+            return code == OperationResult::WrongPassword ||
+                   code == OperationResult::DataErrorEncrypted ||
+                   code == OperationResult::CRCErrorEncrypted ||
+                   code == OperationResult::OpenErrorEncrypted ||
+                   code == OperationResult::EmptyPassword ||
+                   code == OpenError::EncryptedHeadersError;
+        default:
+            return false;
+    }
+}
+
+auto sourceCategory() noexcept -> const std::error_category& {
+    static const FailureSourceCategory instance{};
+    return instance;
+}
+
+} // namespace bit7z

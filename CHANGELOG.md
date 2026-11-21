@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - Unreleased
+
+### Added
+
+- Add an independent Rust bit7z crate with a safe C ABI bridge to vendored bit7z v4.1.0 sources
+- Add archive regression tests for Unicode paths, passwords, concurrent extraction, and embedded driver packages
+- Add reproducible release benchmarks and performance reports for VMware and System driver packages
+
+### Changed
+
+- Replace 7z.exe subprocesses with in-process archive operations through the matching-architecture 7z.dll
+- Use structured archive metadata for driver detection and index extraction
+- Read embedded driver archives through bounded, seekable file regions
+- Preserve highest-level 7z compression, 8 MiB solid blocks, and automatic thread selection
+
+### Fixed
+
+- Improve prevent dangling pointer in key conversion
+- Restrict legacy Windows thunks to x86/x64 targets to fix ARM64 release linking
+- Preserve whitespace and Unicode characters when extracting archived index files
+- Reject unsafe archive extraction paths and report native errors using UTF-8
+
+### Removed
+
+- Remove embedded 7z.exe resources from x86, x64, and ARM64 builds; retain 7z.dll
+
 ## [2.4.0] - 2026-09-29
 
 ### Added

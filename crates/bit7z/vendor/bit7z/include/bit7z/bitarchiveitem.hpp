@@ -1,0 +1,136 @@
+/*
+ * bit7z - A C++ static library to interface with the 7-zip shared libraries.
+ * Copyright (c) Riccardo Ostani - All Rights Reserved.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ */
+
+#ifndef BITARCHIVEITEM_HPP
+#define BITARCHIVEITEM_HPP
+
+#include "bitdefines.hpp"
+#include "bitgenericitem.hpp"
+#include "bitpropvariant.hpp"
+#include "bittypes.hpp"
+
+#include <cstdint>
+
+namespace bit7z {
+
+/**
+ * The BitArchiveItem class represents a generic item inside an archive.
+ */
+class BitArchiveItem : public BitGenericItem {
+    public:
+        /**
+         * @return the index of the item in the archive.
+         */
+        BIT7Z_NODISCARD auto index() const noexcept -> std::uint32_t;
+
+        /**
+         * @return true if and only if the item is a directory (i.e., it has the property BitProperty::IsDir).
+         */
+        BIT7Z_NODISCARD auto isDir() const -> bool final;
+
+        /**
+         * @return true if and only if the item is a symbolic link (either has a non-empty BitProperty::SymLink,
+         *         or it has POSIX/Win32 symbolic link file attributes).
+         */
+        BIT7Z_NODISCARD auto isSymLink() const -> bool final;
+
+        /**
+         * @return the item's name; if not available, it tries to get it from the element's path or,
+         *         if not possible, it returns an empty string.
+         */
+        BIT7Z_NODISCARD auto name() const -> tstring final;
+
+        /**
+         * @note Same as name(), but returning a native string (i.e., std::wstring on Windows, std::string elsewhere).
+         *
+         * @return the name of the item in the archive, if available or inferable from the path, or an empty string
+         *         otherwise.
+         */
+        BIT7Z_NODISCARD auto nativeName() const -> native_string;
+
+        /**
+         * @return the extension of the item, if available or if it can be inferred from the name;
+         *         otherwise it returns an empty string (e.g., when the item is a folder).
+         */
+        BIT7Z_NODISCARD auto extension() const -> tstring;
+
+        /**
+         * @return the path of the item in the archive, if available or inferable from the name, or an empty string
+         *         otherwise.
+         */
+        BIT7Z_NODISCARD auto path() const -> tstring final;
+
+        /**
+         * @note Same as path(), but returning a native string (i.e., std::wstring on Windows, std::string elsewhere).
+         *
+         * @return the path of the item in the archive, if available or inferable from the name, or an empty string
+         *         otherwise.
+         */
+        BIT7Z_NODISCARD auto nativePath() const -> native_string;
+
+        /**
+         * @note Same as path(), but returning a wide string (the internal string type used by 7-Zip on all OSes).
+         *
+         * @return the path of the item in the archive, if available or inferable from the name, or an empty string
+         *         otherwise.
+         */
+        BIT7Z_NODISCARD auto rawPath() const -> sevenzip_string;
+
+        /**
+         * @return the uncompressed size of the item.
+         */
+        BIT7Z_NODISCARD auto size() const -> std::uint64_t final;
+
+        /**
+         * @return the item creation time.
+         */
+        BIT7Z_NODISCARD auto creationTime() const -> time_type;
+
+        /**
+         * @return the item last access time.
+         */
+        BIT7Z_NODISCARD auto lastAccessTime() const -> time_type;
+
+        /**
+         * @return the item last write time.
+         */
+        BIT7Z_NODISCARD auto lastWriteTime() const -> time_type;
+
+        /**
+         * @return the item attributes.
+         */
+        BIT7Z_NODISCARD auto attributes() const -> std::uint32_t final;
+
+        /**
+         * @return the compressed size of the item.
+         */
+        BIT7Z_NODISCARD auto packSize() const -> std::uint64_t;
+
+        /**
+         * @return the CRC value of the item.
+         */
+        BIT7Z_NODISCARD auto crc() const -> std::uint32_t;
+
+        /**
+         * @return true if and only if the item is encrypted.
+         */
+        BIT7Z_NODISCARD auto isEncrypted() const -> bool;
+
+    protected:
+        explicit BitArchiveItem( std::uint32_t itemIndex ) noexcept;
+
+    private:
+        std::uint32_t mItemIndex;
+
+        friend class BitArchiveItemOffset;
+};
+
+} // namespace bit7z
+
+#endif // BITARCHIVEITEM_HPP

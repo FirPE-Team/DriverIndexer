@@ -1,0 +1,22 @@
+[
+  {
+    "path": "VMware VMCI Bus Device/oem2.inf",
+    "size": 3279,
+    "sha256": "54c01011051cee8e6a59cc302e3a03264b8e067acd39390603721c0d99502bdb"
+  },
+  {
+    "path": "VMware VMCI Bus Device/restore.ini",
+    "size": 269,
+    "sha256": "5746cc3ae2715054637c11b3c15b1ac1ea48e6d9249fb8791a7deb04a2518c2c"
+  },
+  {
+    "path": "VMware VMCI Bus Device/vmci.cat",
+    "size": 10295,
+    "sha256": "6318305112be7c861642a4e7d84a791f4abf872cb369a11de1f48fdd26526063"
+  },
+  {
+    "path": "VMware VMCI Bus Device/vmci.sys",
+    "size": 105024,
+    "sha256": "cfd39ebca8b07c876bbb8469b145aae95838c4445f946dff19eb226581daccea"
+  }
+]
