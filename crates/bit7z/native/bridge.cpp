@@ -20,19 +20,31 @@ struct BridgeEntry {
     std::uint32_t is_symlink;
 };
 
+// std::system_error uses the Windows ANSI code page for localized messages.
+// Convert without allocating while handling an exception (including bad_alloc).
+static void error_message(BridgeError* error, const char* message) noexcept {
+    wchar_t wide[2048];
+    const int length = MultiByteToWideChar(CP_ACP, 0, message, -1, wide, 2048);
+    if (!length || !WideCharToMultiByte(CP_UTF8, 0, wide, length, error->message,
+                                      sizeof(error->message), nullptr, nullptr)) {
+        std::strncpy(error->message, message, sizeof(error->message) - 1);
+    }
+    error->message[sizeof(error->message) - 1] = '\0';
+}
+
 // All exported functions catch exceptions, including allocation failures. The error
 // buffer belongs to Rust; no C++ allocation or exception crosses the ABI.
 template<class F> int protect(BridgeError* error, F&& function) noexcept {
     try { function(); return 0; }
     catch (const bit7z::BitException& ex) {
         error->code = ex.code().value();
-        std::strncpy(error->message, ex.what(), sizeof(error->message) - 1);
+        error_message(error, ex.what());
     } catch (const std::exception& ex) {
         error->code = -1;
-        std::strncpy(error->message, ex.what(), sizeof(error->message) - 1);
+        error_message(error, ex.what());
     } catch (...) {
         error->code = -1;
-        std::strncpy(error->message, "Unknown native exception", sizeof(error->message) - 1);
+        error_message(error, "Unknown native exception");
     }
     error->message[sizeof(error->message) - 1] = '\0';
     return -1;

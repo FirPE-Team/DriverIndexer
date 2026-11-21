@@ -118,7 +118,8 @@ fn reports_password_corruption_and_dll_failures() {
         b"secret payload"
     );
     fs::write(temp.0.join("invalid.dll"), b"not a DLL").unwrap();
-    assert!(Bit7z::new(temp.0.join("invalid.dll")).is_err());
+    let error = Bit7z::new(temp.0.join("invalid.dll")).unwrap_err();
+    assert!(!error.message.contains('\u{fffd}'), "{}", error.message);
     assert!(Bit7z::new(temp.0.join("missing.dll")).is_err());
     assert!(lib.open(temp.0.join("invalid.dll"), None).is_err());
     assert!(
