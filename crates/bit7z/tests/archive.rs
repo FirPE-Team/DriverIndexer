@@ -1,5 +1,5 @@
 #![cfg(windows)]
-use bit7z::{Bit7z, ExtractOptions, FileRange};
+use bit7z::{Bit7z, CompressionOptions, ExtractOptions, FileRange};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -251,4 +251,65 @@ fn independent_readers_work_concurrently_and_release_files() {
         }
     });
     fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn compresses_directory_contents_with_default_and_custom_settings() {
+    let temp = Temp::new();
+    let input = temp.0.join("中文 输入");
+    fs::create_dir_all(input.join("nested")).unwrap();
+    fs::write(input.join("root.inf"), b"root inf").unwrap();
+    fs::write(input.join("nested/file.sys"), b"driver payload").unwrap();
+    let lib = library();
+    for (index, options) in [
+        CompressionOptions::default(),
+        CompressionOptions {
+            level: 0,
+            solid_block_size: 0,
+            threads: 1,
+        },
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let output = temp.0.join(format!("output-{index}.7z"));
+        lib.compress_directory(&input, &output, options).unwrap();
+        let mut archive = lib.open(&output, None).unwrap();
+        let entries = archive.entries().unwrap();
+        assert!(entries.iter().any(|e| e.path == Path::new("root.inf")));
+        assert!(!entries.iter().any(|e| e.path.starts_with("中文 输入")));
+        let destination = temp.0.join(format!("out-{index}"));
+        archive
+            .extract(
+                &entries.iter().map(|e| e.index).collect::<Vec<_>>(),
+                &destination,
+                ExtractOptions::default(),
+            )
+            .unwrap();
+        assert_eq!(
+            fs::read(destination.join("nested/file.sys")).unwrap(),
+            b"driver payload"
+        );
+        drop(archive);
+        assert!(lib.compress_directory(&input, &output, options).is_err());
+    }
+    assert!(
+        lib.compress_directory(
+            &input,
+            input.join("recursive.7z"),
+            CompressionOptions::default()
+        )
+        .is_err()
+    );
+    assert!(
+        lib.compress_directory(
+            &input,
+            temp.0.join("invalid.7z"),
+            CompressionOptions {
+                level: 2,
+                ..CompressionOptions::default()
+            }
+        )
+        .is_err()
+    );
 }

@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <bit7z/bit7zlibrary.hpp>
 #include <bit7z/bitarchivereader.hpp>
+#include <bit7z/bitfilecompressor.hpp>
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -150,6 +151,19 @@ int b7_extract(ArchiveContext* context, const std::uint32_t* indices, std::uint3
         context->reader->setOverwriteMode(skip ? bit7z::OverwriteMode::Skip : bit7z::OverwriteMode::None);
         const bit7z::IndicesVector selected(indices, indices + count);
         context->reader->extractTo(destination, selected);
+    });
+}
+int b7_compress(const wchar_t* dll, const wchar_t* input, const wchar_t* output,
+                std::uint32_t level, std::uint64_t solid_size, std::uint32_t threads,
+                BridgeError* error) noexcept {
+    return protect(error, [&] {
+        bit7z::Bit7zLibrary library(dll);
+        bit7z::BitFileCompressor compressor(library, bit7z::BitFormat::SevenZip);
+        compressor.setCompressionLevel(static_cast<bit7z::BitCompressionLevel>(level));
+        compressor.setSolidMode(solid_size != 0);
+        if (solid_size) compressor.setFormatProperty(L"s", std::to_wstring(solid_size) + L"b");
+        compressor.setThreadsCount(threads);
+        compressor.compressDirectoryContents(input, output);
     });
 }
 }

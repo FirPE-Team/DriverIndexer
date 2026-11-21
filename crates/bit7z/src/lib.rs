@@ -50,6 +50,15 @@ struct NativeEntry {
     is_symlink: u32,
 }
 unsafe extern "C" {
+    fn b7_compress(
+        dll: *const u16,
+        input: *const u16,
+        output: *const u16,
+        level: u32,
+        solid_size: u64,
+        threads: u32,
+        error: *mut NativeError,
+    ) -> i32;
     fn b7_library_check(dll: *const u16, error: *mut NativeError) -> i32;
     fn b7_open(
         dll: *const u16,
@@ -120,6 +129,24 @@ pub struct FileRange {
     pub length: u64,
 }
 
+/// 7z compression settings. A solid block size of zero disables solid mode;
+/// zero threads delegates the thread count to 7-Zip.
+#[derive(Debug, Clone, Copy)]
+pub struct CompressionOptions {
+    pub level: u32,
+    pub solid_block_size: u64,
+    pub threads: u32,
+}
+impl Default for CompressionOptions {
+    fn default() -> Self {
+        Self {
+            level: 9,
+            solid_block_size: 8 * 1024 * 1024,
+            threads: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArchiveEntry {
     pub index: u32,
@@ -156,6 +183,53 @@ impl Drop for Archive {
     }
 }
 impl Bit7z {
+    /// Recursively compress the directory's contents without a parent directory
+    /// prefix. Existing output archives are rejected rather than silently updated.
+    pub fn compress_directory(
+        &self,
+        input: impl AsRef<Path>,
+        output: impl AsRef<Path>,
+        options: CompressionOptions,
+    ) -> Result<()> {
+        if !matches!(options.level, 0 | 1 | 3 | 5 | 7 | 9) {
+            return Err(invalid("Compression level must be 0, 1, 3, 5, 7, or 9"));
+        }
+        let input = input.as_ref().canonicalize()?;
+        if !input.is_dir() {
+            return Err(invalid("Compression input must be a directory"));
+        }
+        // Make the final filename absolute even though it does not exist yet.
+        let output = std::path::absolute(output.as_ref())?;
+        let output_parent = output
+            .parent()
+            .ok_or_else(|| invalid("Archive output has no parent"))?
+            .canonicalize()?;
+        let output = output_parent.join(
+            output
+                .file_name()
+                .ok_or_else(|| invalid("Archive output has no file name"))?,
+        );
+        if output.starts_with(&input) {
+            return Err(invalid(
+                "Archive output must be outside the input directory",
+            ));
+        }
+        let dll = wide(self.dll.as_os_str())?;
+        let input = wide(input.as_os_str())?;
+        let output = wide(output.as_os_str())?;
+        // SAFETY: native code only borrows these buffers and catches exceptions.
+        call(|error| unsafe {
+            b7_compress(
+                dll.as_ptr(),
+                input.as_ptr(),
+                output.as_ptr(),
+                options.level,
+                options.solid_block_size,
+                options.threads,
+                error,
+            )
+        })
+    }
     pub fn new(dll: impl AsRef<Path>) -> Result<Self> {
         // An absolute path avoids the Windows DLL search path for the primary DLL.
         let dll = dll.as_ref().canonicalize()?;
