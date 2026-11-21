@@ -362,11 +362,31 @@ cargo test --test windows_manual -- --ignored
 
 Set `DRIVERINDEXER_MISSING_ONLY=1` to restrict enumeration, or set `DRIVERINDEXER_CATALOG` for signature verification.
 
+### Native archive backend
+
+Archive operations use the independent `crates/bit7z` Rust crate and a private C ABI
+to a pinned bit7z C++ static library. The application embeds the matching-architecture
+`7z.dll` and no longer extracts or launches `7z.exe`. Native build sources are
+vendored; compiling them requires neither downloads nor CMake. See the
+[crate documentation](crates/bit7z/README.md) for its API, pinned sources, and licenses.
+
+```powershell
+cargo test --workspace
+cargo test --test driver_archives -- --ignored
+cargo test --workspace --target i686-pc-windows-msvc
+cargo test --target i686-pc-windows-msvc --test driver_archives -- --ignored
+```
+
+Driver archive tests use `testDrive/VMwareVMCI.7z` and `testDrive/DisplayVmWare.7z`;
+set `DRIVERINDEXER_TEST_DRIVE` to override their directory. They compare paths and
+SHA-256 hashes against pre-migration CLI baselines and verify indexing and packaging.
+Generated bundled executables are never executed, and no drivers are installed.
+
 ### Environment Requirements
 
-- Rust 1.65 or higher
-- VC-LTL
-- YY-Thunks
+- A Rust toolchain supporting edition 2024 and the dependencies' minimum versions
+- Visual Studio C++ Build Tools and Windows SDK; cross builds require the matching x86/ARM64 C++ toolset and Rust target
+- VC-LTL and YY-Thunks for legacy Windows support in x86/x64 release builds; ARM64 uses the native toolchain
 
 ### Configuration Project
 
