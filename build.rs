@@ -9,5 +9,10 @@ fn main() {
 
     // 兼容 Windows 7、Windows XP
     #[cfg(not(debug_assertions))]
-    thunk::thunk();
+    if matches!(
+        std::env::var("CARGO_CFG_TARGET_ARCH").as_deref(),
+        Ok("x86" | "x86_64")
+    ) {
+        thunk::thunk();
+    }
 }
