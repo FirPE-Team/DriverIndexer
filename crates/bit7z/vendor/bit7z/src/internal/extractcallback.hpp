@@ -1,0 +1,111 @@
+/*
+ * bit7z - A C++ static library to interface with the 7-zip shared libraries.
+ * Copyright (c) Riccardo Ostani - All Rights Reserved.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ */
+
+#ifndef EXTRACTCALLBACK_HPP
+#define EXTRACTCALLBACK_HPP
+
+#include "bitabstractarchivehandler.hpp"
+#include "bitdefines.hpp"
+#include "bitpropvariant.hpp"
+#include "bittypes.hpp"
+#include "internal/callback.hpp"
+#include "internal/macros.hpp"
+#include "internal/operationresult.hpp"
+
+#include <7zip/Archive/IArchive.h>
+#include <7zip/ICoder.h>
+#include <7zip/IPassword.h>
+
+#include <cstdint>
+#include <exception>
+
+using namespace NArchive::NExtract;
+
+namespace bit7z {
+
+class BitInputArchive;
+
+constexpr auto kEmptyFileAlias = BIT7Z_STRING( "[Content]" );
+constexpr auto kEmptyFileWideAlias = L"[Content]";
+
+enum struct ExtractMode : std::uint8_t {
+    Extract = NAskMode::kExtract,
+    Test    = NAskMode::kTest,
+    Skip    = NAskMode::kSkip
+};
+
+class ExtractCallback : public Callback,
+                        public IArchiveExtractCallback,
+                        public ICompressProgressInfo,
+                        protected ICryptoGetTextPassword {
+    public:
+        ExtractCallback( const ExtractCallback& ) = delete;
+
+        ExtractCallback( ExtractCallback&& ) = delete;
+
+        auto operator=( const ExtractCallback& ) -> ExtractCallback& = delete;
+
+        auto operator=( ExtractCallback&& ) -> ExtractCallback& = delete;
+
+        ~ExtractCallback() override = default;
+
+        // IProgress from IArchiveExtractCallback
+        BIT7Z_STDMETHOD( SetTotal, UInt64 size );
+
+        BIT7Z_STDMETHOD( SetCompleted, const UInt64* completeValue );
+
+        // ICompressProgressInfo
+        BIT7Z_STDMETHOD( SetRatioInfo, const UInt64* inSize, const UInt64* outSize );
+
+        // IArchiveExtractCallback
+        BIT7Z_STDMETHOD( PrepareOperation, Int32 askExtractMode );
+
+        // ICryptoGetTextPassword
+        BIT7Z_STDMETHOD( CryptoGetTextPassword, BSTR* password );
+
+        // IArchiveExtractCallback
+        BIT7Z_STDMETHOD( GetStream, UInt32 index, ISequentialOutStream** outStream, Int32 askExtractMode );
+
+        BIT7Z_STDMETHOD( SetOperationResult, Int32 operationResult );
+
+        BIT7Z_NODISCARD
+        auto errorException() const -> const std::exception_ptr&;
+
+        BIT7Z_NODISCARD
+        virtual auto extractionAttempted() const -> bool;
+
+        // NOLINTNEXTLINE(modernize-use-noexcept, modernize-use-trailing-return-type, readability-identifier-length)
+        MY_UNKNOWN_IMP3( IArchiveExtractCallback, ICompressProgressInfo, ICryptoGetTextPassword ) //-V2507 //-V2511 //-V835 //-V3504
+
+    protected:
+        explicit ExtractCallback( const BitInputArchive& inputArchive, FilterCallback filterCallback = {} );
+
+        BIT7Z_NODISCARD
+        auto extractMode() const noexcept -> ExtractMode;
+
+        BIT7Z_NODISCARD
+        auto inputArchive() const -> const BitInputArchive&;
+
+        virtual auto finishOperation( OperationResult operationResult ) -> HRESULT;
+
+        virtual void releaseStream() = 0;
+
+        virtual auto getOutStream( const BitArchiveItem& item, ISequentialOutStream** outStream ) -> HRESULT = 0;
+
+    private:
+        const BitInputArchive& mInputArchive;
+        ExtractMode mExtractMode;
+        bool mIsLastItemEncrypted;
+        std::exception_ptr mErrorException;
+        FilterCallback mFilterCallback;
+};
+
+} // namespace bit7z
+
+#endif // EXTRACTCALLBACK_HPP
