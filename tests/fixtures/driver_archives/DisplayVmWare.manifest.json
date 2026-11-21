@@ -1,0 +1,177 @@
+[
+  {
+    "path": "2019711/vm3d.cat",
+    "size": 22772,
+    "sha256": "5fad963e86c953c4eab18eef8bb1155df1e19f874e1ee56a2b1b622b6f1926d5"
+  },
+  {
+    "path": "2019711/vm3d.inf",
+    "size": 9793,
+    "sha256": "6af523ae6893b162cadf626148bd31c265ceddbe05860d4d2cbee23392761a63"
+  },
+  {
+    "path": "2019711/vm3dco.dll",
+    "size": 177680,
+    "sha256": "b78bda4ecb34940c746ba8a22db9ae97459750a6937814ea3af7b2a2f38ae794"
+  },
+  {
+    "path": "2019711/vm3ddevapi-debug.dll",
+    "size": 228880,
+    "sha256": "84e22970563b8bba4fd624eff46eb950a5fa7acfe577ba7ffc3f2bb39723a1d7"
+  },
+  {
+    "path": "2019711/vm3ddevapi-release.dll",
+    "size": 218128,
+    "sha256": "c27253ee05c2fd3c9d723642a7063f1d2508dbbc0011821afa83bd799ab168f0"
+  },
+  {
+    "path": "2019711/vm3ddevapi-stats.dll",
+    "size": 229904,
+    "sha256": "b1425f0c6c2a1594cdbe56dfbafe94e2d599bb016d4ba9cdd5b308a86f902bf1"
+  },
+  {
+    "path": "2019711/vm3ddevapi.dll",
+    "size": 154640,
+    "sha256": "dc993a0f8abe7031a9a87d7325029c05c9e17cba42d43d1aa3f9943adea3b5d9"
+  },
+  {
+    "path": "2019711/vm3ddevapi64-debug.dll",
+    "size": 266256,
+    "sha256": "08a718904851ed54b76ff5f12b3348f098d4bdfd8945a15f7c58a82664234a55"
+  },
+  {
+    "path": "2019711/vm3ddevapi64-release.dll",
+    "size": 254992,
+    "sha256": "cf5aaf78ff8b2e9182672d0258eeb9b811cbddd529e9ca67c13e6e6e51986f71"
+  },
+  {
+    "path": "2019711/vm3ddevapi64-stats.dll",
+    "size": 266256,
+    "sha256": "faf4317b500fe9fc54058e4a20ea536218e579e7fe5a42ab4d68f6818504f3d2"
+  },
+  {
+    "path": "2019711/vm3ddevapi64.dll",
+    "size": 178192,
+    "sha256": "ebcd3a20ab2d1d689f33e650a49e9d5fd3b7ca7f63d9c458cb9c38a4774bad74"
+  },
+  {
+    "path": "2019711/vm3dgl.dll",
+    "size": 21768720,
+    "sha256": "c4a02db7ba77982eeb627006489088061b856dd324bd6cd12914c009767f7647"
+  },
+  {
+    "path": "2019711/vm3dgl64.dll",
+    "size": 29016592,
+    "sha256": "cc210a3bb57f29f8f0db810f63f530ef509f29c42adb71f4b1377236564994a6"
+  },
+  {
+    "path": "2019711/vm3dglhelper.dll",
+    "size": 152080,
+    "sha256": "34e67fd819cbf14f0513006afc1d31b2a70882c11807816cfdab0de1d796580a"
+  },
+  {
+    "path": "2019711/vm3dglhelper64.dll",
+    "size": 176168,
+    "sha256": "84f2e7f04e17672419a5511483a21aa1f7162e6c59c8be60a9492efeeffcf376"
+  },
+  {
+    "path": "2019711/vm3dmp_loader.sys",
+    "size": 44560,
+    "sha256": "05aae2605f782ce39d13ced0ec738519724a04b3a11e65ecf5d9c6ac4563612a"
+  },
+  {
+    "path": "2019711/vm3dmp-debug.sys",
+    "size": 417296,
+    "sha256": "976c36c483893423a025f414fc96fe7837bc90ddd6a7d903f4c3a51533d7bae2"
+  },
+  {
+    "path": "2019711/vm3dmp-stats.sys",
+    "size": 334864,
+    "sha256": "652b8ad638d1e75210f3c1847de6df69890a76df30e85423323048643fe4395c"
+  },
+  {
+    "path": "2019711/vm3dmp.sys",
+    "size": 305704,
+    "sha256": "43f889676914a94646ecd5c69ad5bd2b7dc8b5a45362df4eda62112628a9e291"
+  },
+  {
+    "path": "2019711/vm3dservice.exe",
+    "size": 552976,
+    "sha256": "006b7e3e40645ff5cb1c402db9a32ab511b97ccdc507a78d203f44766a1e6467"
+  },
+  {
+    "path": "2019711/vm3dum_10-debug.dll",
+    "size": 421392,
+    "sha256": "c7c1dfd8497977f4719fcb95537b3b12b13ba6ed3f5254989f5a4c93a6f2a5b1"
+  },
+  {
+    "path": "2019711/vm3dum_10-stats.dll",
+    "size": 399376,
+    "sha256": "9e1239bf0f5e5ec58244abfc1a42d12e677906bea94e1b388ef1f50352d287c9"
+  },
+  {
+    "path": "2019711/vm3dum_10.dll",
+    "size": 342544,
+    "sha256": "8b9c67d8008b95bfe8c241adcf0fec36c21f19a927b04af6fa4bc0bdb0d458b1"
+  },
+  {
+    "path": "2019711/vm3dum_loader.dll",
+    "size": 155152,
+    "sha256": "cd1f6b81ed0dc85217fc4db3ede89d885f3c2a275008b149e4ed9898dc199c27"
+  },
+  {
+    "path": "2019711/vm3dum-debug.dll",
+    "size": 488488,
+    "sha256": "dbc0b5982f95db667ec7a4c463d2850d4e62e9c8b1eec20aab4b999aed1e9811"
+  },
+  {
+    "path": "2019711/vm3dum-stats.dll",
+    "size": 473104,
+    "sha256": "58038614d04b014089ba3353a7d203c436dfa23acbba2d377cd517000d57fe6c"
+  },
+  {
+    "path": "2019711/vm3dum.dll",
+    "size": 416272,
+    "sha256": "cd2a1db7ec0ea69b9d3a9227229d89609bd166a34bab2810985c6a429f3ae1f8"
+  },
+  {
+    "path": "2019711/vm3dum64_10-debug.dll",
+    "size": 490512,
+    "sha256": "0a50694f291dad3948c50dd3597102600189eda8d385d2b696d1c55fc95e7f83"
+  },
+  {
+    "path": "2019711/vm3dum64_10-stats.dll",
+    "size": 462864,
+    "sha256": "325618715cf102380472a30e4cd05b3b6f5673d66e7e998c8716e56340df6887"
+  },
+  {
+    "path": "2019711/vm3dum64_10.dll",
+    "size": 394792,
+    "sha256": "01ed4c5bab9484b781db252303dd70c48a16a4a3fdad4b1a61c26e2332d45fef"
+  },
+  {
+    "path": "2019711/vm3dum64_loader.dll",
+    "size": 179216,
+    "sha256": "89836c44d77dc321757824a4d8f6845efde3ddd162ae612f2a24bd4c16934208"
+  },
+  {
+    "path": "2019711/vm3dum64-debug.dll",
+    "size": 588816,
+    "sha256": "e3d0d120647377448cc382f877e30e3b8577f0f271e47fabcdb6728485d0d554"
+  },
+  {
+    "path": "2019711/vm3dum64-stats.dll",
+    "size": 556048,
+    "sha256": "c6cf443843e1cdd24d2ce7e9c93eadcf2b9daf6148e718180007ce443a4c3321"
+  },
+  {
+    "path": "2019711/vm3dum64.dll",
+    "size": 497168,
+    "sha256": "4a6e1fe6113cd5c6cc37cac9663f8875287d93287639b9a5c2204001b006bfb7"
+  },
+  {
+    "path": "2019711/vm3dver.dll",
+    "size": 2048,
+    "sha256": "b34fa8323719aba8cb9951b2212725480f54c0e90e029840469e56d66b50fc61"
+  }
+]
