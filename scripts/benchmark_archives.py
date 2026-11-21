@@ -1,17 +1,18 @@
 """Paired, release-only benchmark of the same SevenZip API against two revisions.
 
-Requires Python 3.10+, two isolated directories containing release-built
+Requires Python 3.12+, two isolated directories containing release-built
 DriverIndexer.exe/archive_backend.exe, and a 7z.exe oracle with its matching DLL.
 All generated output stays under --output. No drivers are installed.
 """
 import argparse
-import collections
 import csv
 import hashlib
 import json
+import os
 import platform
 import shutil
 import statistics
+import stat
 import subprocess
 import time
 from pathlib import Path
@@ -84,7 +85,12 @@ def main():
         if path == root or not path.is_relative_to(root):
             raise RuntimeError(f"Refusing to remove path outside benchmark output: {path}")
         if path.is_dir():
-            shutil.rmtree(path)
+            def clear_readonly(function, filename, exception):
+                if not isinstance(exception, PermissionError):
+                    raise exception
+                os.chmod(filename, stat.S_IWRITE)
+                function(filename)
+            shutil.rmtree(path, onexc=clear_readonly)
         elif path.exists():
             path.unlink()
 
