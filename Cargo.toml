@@ -5,6 +5,10 @@ authors = ["FirTech"]
 edition = "2024"
 build = "build.rs"
 
+[workspace]
+members = ["crates/bit7z"]
+resolver = "3"
+
 [profile.release]
 opt-level = 'z'
 lto = true
