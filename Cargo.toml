@@ -9,6 +9,10 @@ build = "build.rs"
 members = ["crates/bit7z"]
 resolver = "3"
 
+[[bench]]
+name = "archive_backend"
+harness = false
+
 [profile.release]
 opt-level = 'z'
 lto = true
