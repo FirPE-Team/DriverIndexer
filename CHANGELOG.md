@@ -11,7 +11,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add an independent Rust bit7z crate with a safe C ABI bridge to vendored bit7z v4.1.0 sources
 - Add archive regression tests for Unicode paths, passwords, concurrent extraction, and embedded driver packages
-- Add reproducible release benchmarks and performance reports for VMware and System driver packages
 
 ### Changed
 
