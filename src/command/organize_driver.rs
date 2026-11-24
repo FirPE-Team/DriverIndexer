@@ -26,12 +26,12 @@ pub fn organize_driver(driver_path: &Path, output_path: &Path, rename: bool) -> 
     for inf_path in inf_list.iter() {
         // 打开驱动
         let driver_handle = driver_store
-            .open_driver(inf_path, 0)
+            .package(inf_path, 0)
             .with_context(|| format!("Failed to open driver for {:?}", inf_path))?;
 
         // 获取驱动信息
         let driver_info = driver_store
-            .get_version_info(driver_handle)
+            .get_version_info(driver_handle.raw())
             .with_context(|| format!("Failed to get version info for {:?}", inf_path))?;
 
         // 获取驱动类描述
@@ -47,7 +47,7 @@ pub fn organize_driver(driver_path: &Path, output_path: &Path, rename: bool) -> 
         let provider_name = driver_info.provider_name.trim().to_string();
 
         // 关闭驱动
-        driver_store.close_package(driver_handle).ok();
+        drop(driver_handle);
 
         // 构建目标路径(驱动类\供应商\驱动名)
         let driver_root = inf_path.parent().unwrap();

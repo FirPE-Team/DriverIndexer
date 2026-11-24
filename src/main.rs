@@ -13,6 +13,7 @@ rust_i18n::i18n!("locales");
 mod cli;
 mod command;
 mod driver_index;
+mod driver_management;
 mod driver_manager;
 mod driver_match;
 mod hardware;
@@ -482,127 +483,48 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             }
         }
 
-        // 导入驱动程序
         Command::Import {
             system_drive,
-            driver_path: drive_path,
+            driver_path,
             password,
             match_device,
         } => {
-            // 创建临时目录
-            if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
-                write_console(ConsoleType::Error, &t!("temp-create-failed"));
-                process::exit(exitcode::IOERR);
-            }
-            // 解密密码
-            let mut password = password.clone();
-            if let Some(crypt_text) = &password {
-                match try_decrypt_password(crypt_text) {
-                    Ok(p) => {
-                        password = Some(p);
-                    }
-                    Err(e) => {
-                        write_console(
-                            ConsoleType::Error,
-                            &format!("{}: {}", t!("decrypt-password-failed"), e),
-                        );
-                        process::exit(exitcode::DATAERR);
-                    }
-                }
-            }
-
-            let driver_manger = match DriverManger::new(system_drive) {
-                Ok(driver_manger) => driver_manger,
-                Err(e) => {
-                    write_console(ConsoleType::Error, &e.to_string());
-                    return Err(e);
-                }
+            let manager = DriverManger::new(system_drive).map_err(management_error)?;
+            let password = password
+                .as_deref()
+                .map(try_decrypt_password)
+                .transpose()
+                .map_err(management_error)?;
+            let paths = if driver_path
+                .file_name()
+                .is_some_and(|n| n.to_string_lossy().contains(['*', '?']))
+            {
+                get_file_list(
+                    driver_path.parent().unwrap_or(std::path::Path::new(".")),
+                    &driver_path.file_name().unwrap().to_string_lossy(),
+                )
+                .map_err(management_error)?
+            } else {
+                vec![driver_path.clone()]
             };
-
-            // 处理通配符
-            if let Some(driver_name) = drive_path.file_name() {
-                let driver_name = driver_name.to_string_lossy().to_string();
-                if driver_name.contains('*') || driver_name.contains('?') {
-                    let drive_list =
-                        get_file_list(&PathBuf::from(&drive_path.parent().unwrap()), &driver_name)
-                            .with_context(|| "Get driver package list failed")?;
-                    if drive_list.is_empty() {
-                        write_console(
-                            ConsoleType::Error,
-                            "No driver package was found in this directory",
-                        );
-                        return Err(anyhow!("No driver package was found in this directory"));
-                    }
-
-                    // 遍历驱动包列表
-                    for item in drive_list {
-                        write_console(
-                            ConsoleType::Info,
-                            &format!("{}: {}", t!("driver-import-info"), item.to_string_lossy()),
-                        );
-
-                        match driver_manger.import_driver(
-                            system_drive,
-                            &item,
-                            password.as_deref(),
-                            *match_device,
-                        ) {
-                            Ok((success_count, fail_count, total_count)) => {
-                                write_console(
-                                    ConsoleType::Info,
-                                    &t!(
-                                        "driver-import-summary",
-                                        success = success_count.to_string(),
-                                        fail = fail_count.to_string(),
-                                        total = total_count.to_string()
-                                    ),
-                                );
-                            }
-                            Err(e) => {
-                                write_console(ConsoleType::Error, &e.to_string());
-                            }
-                        };
-                    }
-                    return Ok(());
+            if paths.is_empty() {
+                return Err(management_error(anyhow!(
+                    "No driver package matched the input"
+                )));
+            }
+            let mut all = driver_management::BatchResult::default();
+            for path in paths {
+                match manager.import_driver(&path, password.as_deref(), *match_device) {
+                    Ok(mut result) => all.items.append(&mut result.items),
+                    Err(error) => all
+                        .items
+                        .push(driver_management::ItemResult::error(path, error)),
                 }
             }
-
-            // 无通配符
-            write_console(
-                ConsoleType::Info,
-                &format!(
-                    "{}: {}",
-                    t!("driver-import-info"),
-                    drive_path.to_string_lossy()
-                ),
-            );
-
-            match driver_manger.import_driver(
-                system_drive,
-                drive_path,
-                password.as_deref(),
-                *match_device,
-            ) {
-                Ok((success_count, fail_count, total_count)) => {
-                    write_console(
-                        ConsoleType::Info,
-                        &t!(
-                            "driver-import-summary",
-                            success = success_count.to_string(),
-                            fail = fail_count.to_string(),
-                            total = total_count.to_string()
-                        ),
-                    );
-                }
-                Err(e) => {
-                    write_console(ConsoleType::Error, &e.to_string());
-                    return Err(e);
-                }
-            }
-            Ok(())
+            driver_manager::report_batch(&all);
+            all.ensure_success()
         }
 
-        // 导出驱动程序
         Command::Export {
             system_drive,
             export_path,
@@ -613,100 +535,47 @@ fn handle_subcommand(cli: &Cli) -> anyhow::Result<()> {
             exclude_class,
             provider,
         } => {
-            // 创建临时目录
-            if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
-                write_console(ConsoleType::Error, &t!("temp-create-failed"));
-                process::exit(exitcode::IOERR);
-            }
-
-            let driver_manger = match DriverManger::new(system_drive) {
-                Ok(driver_manger) => driver_manger,
-                Err(e) => {
-                    write_console(ConsoleType::Error, &e.to_string());
-                    return Err(e);
-                }
-            };
-
-            match driver_manger.export_driver(
-                system_drive,
-                export_path,
-                *include_system,
-                *system_only,
-                inf.as_deref(),
-                class.as_deref(),
-                exclude_class.as_deref(),
-                provider.as_deref(),
-            ) {
-                Ok((success_count, fail_count, total_count)) => {
-                    write_console(
-                        ConsoleType::Info,
-                        &t!(
-                            "driver-export-summary",
-                            success = success_count.to_string(),
-                            fail = fail_count.to_string(),
-                            total = total_count.to_string()
-                        ),
-                    );
-                    Ok(())
-                }
-                Err(e) => {
-                    write_console(ConsoleType::Error, &e.to_string());
-                    Err(e)
-                }
-            }
+            let manager = DriverManger::new(system_drive).map_err(management_error)?;
+            let result = manager
+                .export_driver(
+                    export_path,
+                    driver_management::DriverFilter {
+                        include_system: *include_system,
+                        system_only: *system_only,
+                        inf: inf.as_deref(),
+                        class: class.as_deref(),
+                        exclude_class: exclude_class.as_deref(),
+                        provider: provider.as_deref(),
+                    },
+                )
+                .map_err(management_error)?;
+            driver_manager::report_batch(&result);
+            result.ensure_success()
         }
 
-        // 卸载驱动程序
         Command::Remove {
             system_drive,
             include_system,
             system_only,
             inf,
             class,
+            exclude_class,
             provider,
-            all,
+            all: _,
         } => {
-            // 创建临时目录
-            if !TEMP_PATH.exists() && create_dir_all(&*TEMP_PATH).is_err() {
-                write_console(ConsoleType::Error, &t!("temp-create-failed"));
-                process::exit(exitcode::IOERR);
-            }
-
-            let driver_manger = match DriverManger::new(system_drive) {
-                Ok(driver_manger) => driver_manger,
-                Err(e) => {
-                    write_console(ConsoleType::Error, &e.to_string());
-                    return Err(e);
-                }
-            };
-
-            match driver_manger.remove_driver(
-                system_drive,
-                *include_system,
-                *system_only,
-                inf.as_deref(),
-                class.as_deref(),
-                provider.as_deref(),
-                *all,
-            ) {
-                Ok((success_count, fail_count, total_count)) => {
-                    // 输出导出统计信息
-                    write_console(
-                        ConsoleType::Info,
-                        &t!(
-                            "driver-remove-summary",
-                            success = success_count.to_string(),
-                            fail = fail_count.to_string(),
-                            total = total_count.to_string()
-                        ),
-                    );
-                    Ok(())
-                }
-                Err(e) => {
-                    write_console(ConsoleType::Error, &e.to_string());
-                    Err(e)
-                }
-            }
+            let manager = DriverManger::new(system_drive).map_err(management_error)?;
+            let result = manager
+                .remove_driver(driver_management::DriverFilter {
+                    include_system: *include_system,
+                    system_only: *system_only,
+                    inf: inf.as_deref(),
+                    class: class.as_deref(),
+                    exclude_class: exclude_class.as_deref(),
+                    provider: provider.as_deref(),
+                })
+                .map_err(management_error)?;
+            driver_manager::report_batch(&result);
+            result.ensure_success()
         }
 
         // 列举驱动程序
@@ -845,4 +714,9 @@ fn try_decrypt_password(input: &str) -> anyhow::Result<String> {
 
     let cipher_text = &input[ENC_PREFIX.len()..];
     decrypt_password(cipher_text)
+}
+
+fn management_error(error: anyhow::Error) -> anyhow::Error {
+    write_console(ConsoleType::Error, &format!("{error:#}"));
+    error
 }

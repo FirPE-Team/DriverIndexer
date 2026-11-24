@@ -4,3 +4,5 @@ pub mod setupapi;
 pub mod sevenzip;
 #[allow(clippy::module_inception)]
 pub mod utils;
+
+pub mod driver_devices;

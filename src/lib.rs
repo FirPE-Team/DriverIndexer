@@ -9,6 +9,7 @@ extern crate lazy_static;
 rust_i18n::i18n!("locales");
 
 pub mod driver_index;
+pub mod driver_management;
 pub mod driver_match;
 pub mod hardware;
 pub mod temp_workspace;
