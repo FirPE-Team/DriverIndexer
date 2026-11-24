@@ -7,4 +7,4 @@ description = "Safe Windows Rust bridge to vendored bit7z and a caller-provided 
 links = "driverindexer_bit7z"
 
 [build-dependencies]
-cc = { version = "1.2", features = ["parallel"] }
+cc = { version = "1.11.3", features = ["parallel"] }

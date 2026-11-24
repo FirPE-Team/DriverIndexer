@@ -16,34 +16,34 @@ codegen-units = 1
 panic = 'abort'
 
 [build-dependencies]
-embed-resource = "3.0.11"
+embed-resource = "3.0.12"
 thunk-rs = "0.3.5"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
 bit7z = { path = "crates/bit7z" }
-clap = { version = "4.6.7", features = ["derive"] }
+clap = { version = "4.6.9", features = ["derive"] }
 glob = "0.3.4"
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
+serde_json = "1.0.154"
 serde_bytes = "0.11.19"
-rust-embed = "8.12.0"
-lazy_static = "1.5.0"
+rust-embed = "8.14.0"
+lazy_static = "1.5.1"
 console = "0.16.6"
 chrono = "0.4.45"
-anyhow = "1.0.104"
+anyhow = "1.0.105"
 remove_dir_all = "0.7"
-libloading = "0.9.0"
+libloading = "0.9.1"
 fastrand = "2.5.0"
 goblin = "0.10.7"
-walkdir = "2.5.0"
+walkdir = "2.5.1"
 threadpool = "1.8.1"
 num_cpus = "1.17.0"
 sys-locale = "0.3.2"
-rust-i18n = "3.1.5"
+rust-i18n = "4.2.4"
 bincode = "2.0.1"
 exitcode = "1.1.2"
-windows-version = "0.1.7"
+windows-version = "0.100.0"
 windows = { version = "0.62.2", features = [
     "Win32_Globalization",
     "Win32_Devices_DeviceAndDriverInstallation",
@@ -61,11 +61,11 @@ windows = { version = "0.62.2", features = [
     "Win32_Security_WinTrust",
     "Win32_Security_Cryptography"
 ] }
-magic-crypt = "5.0.1"
+magic-crypt = "6.0.0"
 dotenvy = "0.15.7"
 dotenvy_macro = "0.15.7"
-crc32fast = "1.5.2"
-filetime = "0.2.29"
-zstd = "0.14.0"
-memmap2 = "0.9.11"
-sha2 = "0.11.0"
+crc32fast = "1.5.5"
+filetime = "0.2.30"
+zstd = "0.14.4"
+memmap2 = "0.9.12"
+sha2 = "0.11.1"
