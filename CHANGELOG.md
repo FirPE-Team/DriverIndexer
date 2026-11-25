@@ -5,15 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.5.0] - Unreleased
+## [2.5.0] - 2026-11-25
 
 ### Added
 
+- Add Dism++-compatible driver-store management for listing, importing, exporting, and removing drivers
+- Add offline Windows driver-management support with target architecture and version detection
+- Add driver-management result types, per-item status reporting, and offline parity validation tests
 - Add an independent Rust bit7z crate with a safe C ABI bridge to vendored bit7z v4.1.0 sources
 - Add archive regression tests for Unicode paths, passwords, concurrent extraction, and embedded driver packages
 
 ### Changed
 
+- Align driver enumeration with Dism++ repository and inbox-driver rules, including class, provider, critical, and size metadata
+- Refactor driver-store target discovery and lifecycle handling into shared management code
+- Process every import and removal candidate while preserving successful results and reporting partial failures
+- Support published and original INF names when selecting driver packages
+- Export complete stored packages using localized class directories and repository package names
+- Preserve architecture-specific `drvstore.dll` selection for online and offline Windows targets
 - Replace 7z.exe subprocesses with in-process archive operations through the matching-architecture 7z.dll
 - Use structured archive metadata for driver detection and index extraction
 - Read embedded driver archives through bounded, seekable file regions
@@ -21,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Report allocated package directory size consistently with Dism++ behavior
+- Handle offline driver-store operations across supported Windows architectures and legacy version layouts
 - Improve prevent dangling pointer in key conversion
 - Restrict legacy Windows thunks to x86/x64 targets to fix ARM64 release linking
 - Preserve whitespace and Unicode characters when extracting archived index files
